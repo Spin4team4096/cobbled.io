@@ -396,7 +396,7 @@
                     for (let i=0; i < entityJSON.rockX.length; i++) {
                         if (entityJSON.rockDuplicated[i] == 1) {
                             drawShape(entityJSON.rockX[i]-cameraX, entityJSON.rockY[i]-cameraY, 7, 7, i, '#777777', '#606060', 2)
-                            drawShape(entityJSON.rockX[i]+Math.sin(entityJSON.rockDirection*5)-cameraX, entityJSON.rockY[i]+Math.cos(entityJSON.rockDirection*5), 7, i, '#777777', '#606060', 2)
+                            drawShape(entityJSON.rockX[i]+Math.sin(entityJSON.rockDirection[i]*5)-cameraX, entityJSON.rockY[i]+Math.cos(entityJSON.rockDirection[i]*5)-cameraY, 7, 7, i, '#777777', '#606060', 2)
                         } else {
                             drawShape(entityJSON.rockX[i]-cameraX, entityJSON.rockY[i]-cameraY, 7, 7, i, '#777777', '#606060', 2)
                         }
