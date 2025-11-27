@@ -11,7 +11,7 @@
         // TODO: (Apart from whatever is already in the comments)
         // - Make Crimson boulders have a red haze thing, and text on it
         // - Cache objects into arrays before looping through each rock/boulder/etc... as in, let rockY = entityJSON.rockY, then use rockY instead
-        // - Add stepping
+        // - Add a horizontal view limit too
 
         //setup shit
         const peer = new Peer(undefined, {
@@ -194,6 +194,7 @@
                         if (type === "entityData") {
                             entityJSON = entityData
                             playerID = serverPackage.ID
+                            stats = serverPackage.stats
                         }
                     }
                 } catch (err) {
@@ -302,7 +303,8 @@
             ticksSinceLastStep: 0,
             stepping: 0,
             mode: 0, // 0 is normal, -1 is slower, 1 is faster
-            stopped: 0
+            stopped: 0,
+            upgradeKey: -1,
         }
         achievements = {
             AchievementProgress: [],
@@ -384,6 +386,15 @@
                 let worldMouseX = (mouseX/scale) + cameraX
                 let worldMouseY = (mouseY/scale) + cameraY
 
+                // upgrading stats
+                playerJSON.upgradeKey = -1
+                for (let i = 1; i <= 10; i++) {
+                    const key = i === 10 ? '0' : i.toString()
+                    if (isKeyPressed(key)) {
+                        playerJSON.upgradeKey = i
+                    }
+                }
+
                 // render shit
                 ctx.clearRect(0, 0, canvas.width, canvas.height)
                 ctx.save()
@@ -396,7 +407,7 @@
                     for (let i=0; i < entityJSON.rockX.length; i++) {
                         if (entityJSON.rockDuplicated[i] == 1) {
                             drawShape(entityJSON.rockX[i]-cameraX, entityJSON.rockY[i]-cameraY, 7, 7, i, '#777777', '#606060', 2)
-                            drawShape(entityJSON.rockX[i]+Math.sin(entityJSON.rockDirection[i]*5)-cameraX, entityJSON.rockY[i]+Math.cos(entityJSON.rockDirection[i]*5)-cameraY, 7, 7, i, '#777777', '#606060', 2)
+                            drawShape(entityJSON.rockX[i]+(Math.cos(degToRad(entityJSON.rockDirection[i]))*5)-cameraX, entityJSON.rockY[i]+(Math.sin(degToRad(entityJSON.rockDirection[i]))*5)-cameraY, 7, 7, i, '#777777', '#606060', 2)
                         } else {
                             drawShape(entityJSON.rockX[i]-cameraX, entityJSON.rockY[i]-cameraY, 7, 7, i, '#777777', '#606060', 2)
                         }
@@ -433,28 +444,29 @@
 
                 if (entityJSON.playerX) {
                     for (let i=0; i < entityJSON.playerX.length; i++) {
-                        if (i == playerID) {
-                            if (entityJSON.playerHeight[i][0] < entityJSON.playerHeight[i][1]) {
-                                drawRect((playerX[0] + playerX[1])/2 - cameraX, (playerY[0] + playerY[1])/2 - cameraY, distanceTo(playerX[1], playerY[1], playerX[0], playerY[0]), 8, directionTo(playerX[1], playerY[1], playerX[0], playerY[0]), '#ff2626', '#bf1d1d', 1)
-                                drawCircle(playerX[0]-cameraX, playerY[0]-cameraY, (playerSize*((100+(playerHeight[0]/1.5))/100))/2, playerDirection[0], '#ff2626', '#bf1d1d', 2)
-                                drawCircle(playerX[1]-cameraX, playerY[1]-cameraY, (playerSize*((100+(playerHeight[1]/1.5))/100))/2, playerDirection[1], '#ff2626', '#bf1d1d', 2)
+                        if (entityJSON.playerHP[i] > 0) {
+                            if (i == playerID) {
+                                if (entityJSON.playerHeight[i][0] < entityJSON.playerHeight[i][1]) {
+                                    drawRect((playerX[0] + playerX[1])/2 - cameraX, (playerY[0] + playerY[1])/2 - cameraY, distanceTo(playerX[1], playerY[1], playerX[0], playerY[0]), 8, directionTo(playerX[1], playerY[1], playerX[0], playerY[0]), '#ff2626', '#bf1d1d', 1)
+                                    drawCircle(playerX[0]-cameraX, playerY[0]-cameraY, (playerSize*((100+(playerHeight[0]/1.5))/100))/2, playerDirection[0], '#ff2626', '#bf1d1d', 2)
+                                    drawCircle(playerX[1]-cameraX, playerY[1]-cameraY, (playerSize*((100+(playerHeight[1]/1.5))/100))/2, playerDirection[1], '#ff2626', '#bf1d1d', 2)
+                                } else {
+                                    drawRect((playerX[0] + playerX[1])/2 - cameraX, (playerY[0] + playerY[1])/2 - cameraY, distanceTo(playerX[1], playerY[1], playerX[0], playerY[0]), 8, directionTo(playerX[1], playerY[1], playerX[0], playerY[0]), '#ff2626', '#bf1d1d', 1)
+                                    drawCircle(playerX[1]-cameraX, playerY[1]-cameraY, (playerSize*((100+(playerHeight[1]/1.5))/100))/2, playerDirection[1], '#ff2626', '#bf1d1d', 2)
+                                    drawCircle(playerX[0]-cameraX, playerY[0]-cameraY, (playerSize*((100+(playerHeight[0]/1.5))/100))/2, playerDirection[0], '#ff2626', '#bf1d1d', 2)
+                                }
                             } else {
-                                drawRect((playerX[0] + playerX[1])/2 - cameraX, (playerY[0] + playerY[1])/2 - cameraY, distanceTo(playerX[1], playerY[1], playerX[0], playerY[0]), 8, directionTo(playerX[1], playerY[1], playerX[0], playerY[0]), '#ff2626', '#bf1d1d', 1)
-                                drawCircle(playerX[1]-cameraX, playerY[1]-cameraY, (playerSize*((100+(playerHeight[1]/1.5))/100))/2, playerDirection[1], '#ff2626', '#bf1d1d', 2)
-                                drawCircle(playerX[0]-cameraX, playerY[0]-cameraY, (playerSize*((100+(playerHeight[0]/1.5))/100))/2, playerDirection[0], '#ff2626', '#bf1d1d', 2)
+                                if (entityJSON.playerHeight[i][0] < entityJSON.playerHeight[i][1]) {
+                                    drawRect((entityJSON.playerX[i][0] + entityJSON.playerX[i][1])/2 - cameraX, (entityJSON.playerY[i][0] + entityJSON.playerY[i][1])/2 - cameraY, distanceTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), 8, directionTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), '#2626ff', '#1d1dbf', 1)
+                                    drawCircle(entityJSON.playerX[i][0]-cameraX, entityJSON.playerY[i][0]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2, entityJSON.playerDirection[i][0], '#2626ff', '#1d1dbf', 2)
+                                    drawCircle(entityJSON.playerX[i][1]-cameraX, entityJSON.playerY[i][1]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2, entityJSON.playerDirection[i][1], '#2626ff', '#1d1dbf', 2)
+                                } else {
+                                    drawRect((entityJSON.playerX[i][0] + entityJSON.playerX[i][1])/2 - cameraX, (entityJSON.playerY[i][0] + entityJSON.playerY[i][1])/2 - cameraY, distanceTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), 8, directionTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), '#2626ff', '#1d1dbf', 1)     
+                                    drawCircle(entityJSON.playerX[i][1]-cameraX, entityJSON.playerY[i][1]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2, entityJSON.playerDirection[i][1], '#2626ff', '#1d1dbf', 2)
+                                    drawCircle(entityJSON.playerX[i][0]-cameraX, entityJSON.playerY[i][0]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2, entityJSON.playerDirection[i][0], '#2626ff', '#1d1dbf', 2)
+                                }
                             }
-                        } else {
-                            if (entityJSON.playerHeight[i][0] < entityJSON.playerHeight[i][1]) {
-                                drawRect((entityJSON.playerX[i][0] + entityJSON.playerX[i][1])/2 - cameraX, (entityJSON.playerY[i][0] + entityJSON.playerY[i][1])/2 - cameraY, distanceTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), 8, directionTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), '#2626ff', '#1d1dbf', 1)
-                                drawCircle(entityJSON.playerX[i][0]-cameraX, entityJSON.playerY[i][0]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2, entityJSON.playerDirection[i][0], '#2626ff', '#1d1dbf', 2)
-                                drawCircle(entityJSON.playerX[i][1]-cameraX, entityJSON.playerY[i][1]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2, entityJSON.playerDirection[i][1], '#2626ff', '#1d1dbf', 2)
-                            } else {
-                                drawRect((entityJSON.playerX[i][0] + entityJSON.playerX[i][1])/2 - cameraX, (entityJSON.playerY[i][0] + entityJSON.playerY[i][1])/2 - cameraY, distanceTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), 8, directionTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), '#2626ff', '#1d1dbf', 1)     
-                                drawCircle(entityJSON.playerX[i][1]-cameraX, entityJSON.playerY[i][1]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2, entityJSON.playerDirection[i][1], '#2626ff', '#1d1dbf', 2)
-                                drawCircle(entityJSON.playerX[i][0]-cameraX, entityJSON.playerY[i][0]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2, entityJSON.playerDirection[i][0], '#2626ff', '#1d1dbf', 2)
-                            }
-                        }
-                        
+                        }                        
                     }
                 }
 
@@ -468,7 +480,7 @@
                     worldMouseY: worldMouseY,
                     mode: playerJSON.mode,
                     stopped: playerJSON.stopped,
-                    stats: stats
+                    upgradeKey: playerJSON.upgradeKey
                 }
                 sendData(serverULID, 'playerUpdate', playerID, playerPackage)
                 
