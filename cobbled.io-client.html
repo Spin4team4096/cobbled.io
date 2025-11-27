@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html>
+    <title>Cobbled.io - Client</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<body style="margin:0; overflow:hidden;">
+    <canvas id="game"></canvas>
+
+    <script>
+        // TODO: (Apart from whatever is already in the comments)
+        // - Make Crimson boulders have a red haze thing, and text on it
+        // - Cache objects into arrays before looping through each rock/boulder/etc... as in, let rockY = entityJSON.rockY, then use rockY instead
+        // - Add stepping
+
+        //setup shit
+        const peer = new Peer(undefined, {
+            host: 'peerjs.mikedev101.cc',
+            port: 443,
+            secure: true,
+            config: {
+                iceTransportPolicy: "all",
+                iceServers: [
+                    { urls: "stun:vpn.mikedev101.cc:3478" },
+                    { urls: "turn:vpn.mikedev101.cc:3478", username: "free", credential: "free" },
+                    { urls: "stun:vpn.mikedev101.cc:5349" },
+                    { urls: "turn:vpn.mikedev101.cc:5349", username: "free", credential: "free" },
+                ]
+            },
+            debug: 2
+        });
+
+        const app = firebase.initializeApp({
+            databaseURL: "https://guessthepin-2fe64-default-rtdb.europe-west1.firebasedatabase.app"
+        });
+        const database = firebase.database();
+
+        // WE NEED TO GET PEER ID <-- lol I forgot to remove this placeholder comment somehow <-- lol i forgot to remove the placeholder placeholder comment somehow <-- lol i give up on this joke :P
+        peer.on('open', (id) => {
+            console.log('GIMEMEEE Peer ID:', id)
+            window.myPeerId = id
+            firstConnect()
+        })
+
+        // other
+
+        const canvas = document.getElementById('game')
+        const ctx = canvas.getContext('2d')
+
+        let mouseX = 0
+        let mouseY = 0
+        let leftMouseDown = false
+        let rightMouseDown = false
+
+        addEventListener('resize', resize)
+        canvas.addEventListener('mousemove', e => {
+            mouseX = e.offsetX - canvas.width / 2
+            mouseY = e.offsetY - canvas.height / 2
+        })
+        canvas.addEventListener('mousedown', e => {
+            if (e.button === 0) {
+                leftMouseDown = true
+            } else if (e.button === 2) {
+                rightMouseDown = true
+            }
+        })
+        canvas.addEventListener('mouseup', e => {
+            if (e.button === 0) {
+                leftMouseDown = false
+            } else if (e.button === 2) {
+                rightMouseDown = false
+            }
+        })
+        canvas.addEventListener('contextmenu', e => {e.preventDefault()})
+        
+        const keys = {}
+        addEventListener('keydown', e => {
+            keys[e.key] = true
+            if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
+                e.preventDefault()
+            }
+        })
+        addEventListener('keyup', e => {
+            keys[e.key] = false
+        })
+
+        // Helper Functions
+
+        function isKeyPressed(key) {
+            return keys[key] === true
+        }
+
+        function degToRad(degrees) {
+            return degrees * (Math.PI / 180)
+        }
+
+        function radToDeg(radians) {
+            return radians * (180 / Math.PI)
+        }
+
+        function directionTo(newx, newy, oldx, oldy) {
+            return radToDeg(Math.atan2(newy - oldy, newx - oldx))
+        }
+
+        function distanceTo(newx, newy, oldx, oldy) {
+            return Math.sqrt((newx - oldx) ** 2 + (newy - oldy) ** 2)
+        }
+
+        function daysSince2000() {
+            const startDate = new Date('2000-01-01T00:00:00Z')
+            const currentDate = new Date()
+            const diffTime = currentDate - startDate
+            return Math.floor(diffTime / (1000 * 60 * 60 * 24))
+        }
+
+        function randomInt(num1, num2) {return Math.floor(Math.random() * (Math.max(num1, num2) - Math.min(num1, num2) + 1)) + Math.min(num1, num2)}
+        function randomFloat(num1, num2) {return Math.random() * (Math.max(num1, num2) - Math.min(num1, num2)) + Math.min(num1, num2)}
+
+        function waitUntil(condition, interval = 100) {
+            return new Promise(resolve => {
+                const check = () => {
+                    if (condition()) {
+                        resolve()
+                    } else {
+                        setTimeout(check, interval)
+                    }
+                }
+                check()
+            })
+        }
+
+        function clamp(value, min, max) {
+            return Math.max(min, Math.min(max, value))
+        }
+
+        // Specific Functions
+
+        function setKey(key, value) {
+            database.ref('pin/' + key).set(value)
+        }
+
+        async function getKey(key) {
+            const snapshot = await database.ref('pin/' + key).once('value')
+            return snapshot.val()
+        }
+
+        function sendData(peerID, type, data, data2, data3, data4, data5) {
+            const randomID = randomInt(1000000000000000, 9999999999999999)
+            const message = {
+                opcode: "P_MSG",
+                payload: JSON.stringify([type, randomID, data, data2, data3, data4, data5])
+            }
+            
+            if (conn && conn.open) {
+                conn.send(JSON.stringify(message))
+                return true
+            } else {
+                return false
+            }
+        }
+
+        async function connected() {
+            console.log('Connected to server!')
+            await waitUntil(() => playerID >= 0, 50)
+            sendData(serverULID, 'spawnPlayer', playerID)
+        }
+
+        async function firstConnect() {
+            console.log(`first connect function ran`)
+            // pick the first server bc what else will i do bro
+            // in the future do ping tests and pick the best one ig
+            serverList = await getKey('cobbled_serverList')
+            serverName = serverList[1]
+            serverJSON = await getKey(`${serverName}_config`)
+            serverULID = await getKey(`${serverName}_ULID`)
+            connectToServer(serverULID)
+            console.log(`list: ${serverList} name: ${serverName} json: ${serverJSON} ulid: ${serverULID}`)
+        }
+
+        function connectToServer(serverULID) {
+            conn = peer.connect(serverULID)
+            
+            conn.on('open', () => {
+                connected()
+
+            })
+            
+            conn.on('data', (data) => {
+                try {
+                    const message = JSON.parse(data)
+                    if (message.opcode === "P_MSG") {
+                        const [type, randomID, entityData, serverPackage] = JSON.parse(message.payload)
+                        
+                        if (type === "entityData") {
+                            entityJSON = entityData
+                            playerID = serverPackage.ID
+                        }
+                    }
+                } catch (err) {
+                    console.log('Parse error:', err)
+                }
+            })
+            
+            conn.on('error', (err) => {
+                console.log('Connection error:', err)
+            })
+        }
+
+        // Drawing Functions
+
+        function drawRect(x,y,sizex,sizey,dir,fill,outline,thickness) {
+            ctx.fillStyle = fill
+            ctx.strokeStyle = outline
+            ctx.lineWidth = thickness
+
+            ctx.save()
+            ctx.translate(x, y)
+            ctx.rotate(degToRad(dir))
+            ctx.fillRect(0-(sizex/2), 0-(sizey/2), sizex, sizey,)
+            if (thickness > 0) ctx.strokeRect(0-(sizex/2), 0-(sizey/2), sizex, sizey,)
+            ctx.restore()
+
+        }
+
+        function drawShape(x, y, radius, sides, dir, fill, outline, thickness) {
+            ctx.fillStyle = fill
+            ctx.strokeStyle = outline
+            ctx.lineWidth = thickness
+
+            ctx.save()
+            ctx.translate(x, y)
+            ctx.rotate(degToRad(dir))
+
+            ctx.beginPath()
+            for (let i = 0; i < sides; i++) {
+                const angle = (i / sides) * Math.PI * 2
+                const px = Math.cos(angle) * radius
+                const py = Math.sin(angle) * radius
+                if (i == 0) ctx.moveTo(px, py)
+                else ctx.lineTo(px, py)
+            }
+            ctx.closePath()
+            ctx.fill()
+            if (thickness > 0) ctx.stroke()
+            ctx.restore()
+        }
+
+
+        function drawCircle(x, y, radius, dir, fill, outline, thickness) {
+            ctx.fillStyle = fill
+            ctx.strokeStyle = outline
+            ctx.lineWidth = thickness
+
+            ctx.save()
+            ctx.translate(x, y)
+            ctx.rotate(degToRad(dir))
+            ctx.beginPath()
+            ctx.arc(0, 0, radius, 0, Math.PI*2)
+            ctx.closePath()
+            ctx.fill()
+            if (thickness > 0) ctx.stroke()
+            ctx.restore()
+        }
+
+        function drawLine(x, y, xPoints, yPoints, dir, fill, outline, thickness, closed=false) {
+            ctx.fillStyle = fill
+            ctx.strokeStyle = outline
+            ctx.lineWidth = thickness
+
+            ctx.save()
+            ctx.translate(x, y)
+            ctx.rotate(degToRad(dir))
+            ctx.beginPath()
+
+            ctx.moveTo(xPoints[0], yPoints[0])
+            for (let i = 1; i < xPoints.length; i++) {
+                ctx.lineTo(xPoints[i], yPoints[i])
+            }
+
+            if (closed) ctx.closePath()
+            ctx.fill()
+            if (thickness > 0) ctx.stroke()
+            ctx.restore()
+        }
+
+        // Other Functions
+
+        function resize() {
+        canvas.width = innerWidth
+        canvas.height = innerHeight
+        }
+
+        // init
+        serverList = {}
+        entityJSON = {}
+        playerJSON = {
+            level: 0,
+            missCounter: 0,
+            deathCounter: 0,
+            footGoingUp: 1,
+            activeFoot: 0,
+            ticksSinceLastStep: 0,
+            stepping: 0,
+            mode: 0, // 0 is normal, -1 is slower, 1 is faster
+            stopped: 0
+        }
+        achievements = {
+            AchievementProgress: [],
+            AchievementAchieved: [],
+        }
+        stats = {
+            passiveRegen: 0,
+            activeRegen: 0,
+            maxHealth: 0,
+            kickSpeed: 0,
+            kickAccuracy: 0,
+            kickDamage: 0,
+            duplication: 0,
+            stepSpeed: 0,
+            stepReach: 0,
+            fieldOfView: 0
+        }
+        playerX = 0
+        playerY = 0
+        playerHP = 0
+        playerXP = 0
+        playerDirection = 0
+        playerHeight = 0
+        playerSize = 0
+        let cameraX = 0
+        let cameraY = 0
+        let playerID = -1
+        resize()
+        startClientLoop()
+
+        let running = true
+
+        function startClientLoop() {
+            setInterval(() => {
+                if (!running || playerID < 0) return
+
+                playerX = entityJSON.playerX[playerID]
+                playerY = entityJSON.playerY[playerID]
+                playerHP = entityJSON.playerHP[playerID]
+                playerXP = entityJSON.playerXP[playerID]
+                playerDirection = entityJSON.playerDirection[playerID]
+                playerHeight = entityJSON.playerHeight[playerID]
+                playerSize = entityJSON.playerSize[playerID]
+
+                if (isKeyPressed('a') || isKeyPressed('A')) {
+                    playerJSON.stopped = 1
+                } else {
+                    playerJSON.stopped = 0
+                }
+                playerJSON.mode = 0
+                if (leftMouseDown) {playerJSON.mode = 1}
+                if (rightMouseDown) {playerJSON.mode = -1}
+
+                switch (playerJSON.mode) {
+                    case -1: playerModeSpeedMultiplier = 0.75
+                    case 0: playerModeSpeedMultiplier = 1
+                    case 1: playerModeSpeedMultiplier = 1.5
+                }
+
+                stepReach = 50+(stats.stepReach*5)
+                fov = 360*(1+(stats.fieldOfView/20))
+
+                if (entityJSON.playerHeight[playerID][0] < entityJSON.playerHeight[playerID][1]) {
+                    activeFoot = 1
+                    otherFoot = 0
+                } else {
+                    activeFoot = 0
+                    otherFoot = 1
+                }
+
+                // main
+
+                if (playerID >= 0) {
+                    cameraX += (playerX[otherFoot]-cameraX)/5
+                    cameraY += (playerY[otherFoot]-cameraY)/5
+                }
+
+                scale = canvas.height/fov
+                let worldMouseX = (mouseX/scale) + cameraX
+                let worldMouseY = (mouseY/scale) + cameraY
+
+                // render shit
+                ctx.clearRect(0, 0, canvas.width, canvas.height)
+                ctx.save()
+                ctx.translate(canvas.width / 2, canvas.height / 2)
+
+                scale = canvas.height/fov
+                ctx.scale(scale, scale)
+
+                if (entityJSON.rockX) {
+                    for (let i=0; i < entityJSON.rockX.length; i++) {
+                        if (entityJSON.rockDuplicated[i] == 1) {
+                            drawShape(entityJSON.rockX[i]-cameraX, entityJSON.rockY[i]-cameraY, 7, 7, i, '#777777', '#606060', 2)
+                            drawShape(entityJSON.rockX[i]+Math.sin(entityJSON.rockDirection*5)-cameraX, entityJSON.rockY[i]+Math.cos(entityJSON.rockDirection*5), 7, i, '#777777', '#606060', 2)
+                        } else {
+                            drawShape(entityJSON.rockX[i]-cameraX, entityJSON.rockY[i]-cameraY, 7, 7, i, '#777777', '#606060', 2)
+                        }
+                    }
+                }
+
+                if (entityJSON.boulderX) {
+                    for (let i=0; i < entityJSON.boulderX.length; i++) {
+                        if (entityJSON.boulderSpawnCondition[i] == 1) {
+                            switch (entityJSON.boulderRarity[i]) {
+                                case 0: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#777777', '#606060', 4); break
+                                case 1: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#f2f2f2', '#cccccc', 4); break
+                                case 2: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ffbf00', '#d9a300', 4); break
+                                case 3: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#58f5db', '#49ccb6', 4); break
+                                case 4: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ff3333', '#d90000', 4); break
+                            }
+                        } else if (entityJSON.boulderSpawnCondition[i] == 2) {
+                            switch (entityJSON.boulderRarity[i]) {
+                                case 0: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#777777', '#606060', 8); break
+                                case 1: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#f2f2f2', '#cccccc', 8); break
+                                case 2: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ffbf00', '#d9a300', 8); break
+                                case 3: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#58f5db', '#49ccb6', 8); break
+                                case 4: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ff3333', '#d90000', 8); break
+                            }
+                        }
+                    }
+                }
+
+                if (entityJSON.sanctuaryX) {
+                    for (let i=0; i < entityJSON.sanctuaryX.length; i++) {
+                        drawCircle(entityJSON.sanctuaryX[i]-cameraX, entityJSON.sanctuaryY[i]-cameraY, entityJSON.sanctuarySize[i]/2, i, '#78787833', '#ff0000', 0)
+                    }
+                }
+
+                if (entityJSON.playerX) {
+                    for (let i=0; i < entityJSON.playerX.length; i++) {
+                        if (i == playerID) {
+                            if (entityJSON.playerHeight[i][0] < entityJSON.playerHeight[i][1]) {
+                                drawRect((playerX[0] + playerX[1])/2 - cameraX, (playerY[0] + playerY[1])/2 - cameraY, distanceTo(playerX[1], playerY[1], playerX[0], playerY[0]), 8, directionTo(playerX[1], playerY[1], playerX[0], playerY[0]), '#ff2626', '#bf1d1d', 1)
+                                drawCircle(playerX[0]-cameraX, playerY[0]-cameraY, (playerSize*((100+(playerHeight[0]/1.5))/100))/2, playerDirection[0], '#ff2626', '#bf1d1d', 2)
+                                drawCircle(playerX[1]-cameraX, playerY[1]-cameraY, (playerSize*((100+(playerHeight[1]/1.5))/100))/2, playerDirection[1], '#ff2626', '#bf1d1d', 2)
+                            } else {
+                                drawRect((playerX[0] + playerX[1])/2 - cameraX, (playerY[0] + playerY[1])/2 - cameraY, distanceTo(playerX[1], playerY[1], playerX[0], playerY[0]), 8, directionTo(playerX[1], playerY[1], playerX[0], playerY[0]), '#ff2626', '#bf1d1d', 1)
+                                drawCircle(playerX[1]-cameraX, playerY[1]-cameraY, (playerSize*((100+(playerHeight[1]/1.5))/100))/2, playerDirection[1], '#ff2626', '#bf1d1d', 2)
+                                drawCircle(playerX[0]-cameraX, playerY[0]-cameraY, (playerSize*((100+(playerHeight[0]/1.5))/100))/2, playerDirection[0], '#ff2626', '#bf1d1d', 2)
+                            }
+                        } else {
+                            if (entityJSON.playerHeight[i][0] < entityJSON.playerHeight[i][1]) {
+                                drawRect((entityJSON.playerX[i][0] + entityJSON.playerX[i][1])/2 - cameraX, (entityJSON.playerY[i][0] + entityJSON.playerY[i][1])/2 - cameraY, distanceTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), 8, directionTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), '#2626ff', '#1d1dbf', 1)
+                                drawCircle(entityJSON.playerX[i][0]-cameraX, entityJSON.playerY[i][0]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2, entityJSON.playerDirection[i][0], '#2626ff', '#1d1dbf', 2)
+                                drawCircle(entityJSON.playerX[i][1]-cameraX, entityJSON.playerY[i][1]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2, entityJSON.playerDirection[i][1], '#2626ff', '#1d1dbf', 2)
+                            } else {
+                                drawRect((entityJSON.playerX[i][0] + entityJSON.playerX[i][1])/2 - cameraX, (entityJSON.playerY[i][0] + entityJSON.playerY[i][1])/2 - cameraY, distanceTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), 8, directionTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), '#2626ff', '#1d1dbf', 1)     
+                                drawCircle(entityJSON.playerX[i][1]-cameraX, entityJSON.playerY[i][1]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2, entityJSON.playerDirection[i][1], '#2626ff', '#1d1dbf', 2)
+                                drawCircle(entityJSON.playerX[i][0]-cameraX, entityJSON.playerY[i][0]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2, entityJSON.playerDirection[i][0], '#2626ff', '#1d1dbf', 2)
+                            }
+                        }
+                        
+                    }
+                }
+
+
+
+                ctx.restore()
+
+                // Send Player Updates
+                playerPackage = {
+                    worldMouseX: worldMouseX,
+                    worldMouseY: worldMouseY,
+                    mode: playerJSON.mode,
+                    stopped: playerJSON.stopped,
+                    stats: stats
+                }
+                sendData(serverULID, 'playerUpdate', playerID, playerPackage)
+                
+            }, 33.33)
+        }
+
+
+    </script>
+</body>
+</html>
