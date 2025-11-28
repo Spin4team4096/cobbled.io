@@ -10,7 +10,7 @@
     <script>
         // TODO: (Apart from whatever is already in the comments)
         // - Make Crimson boulders have a red haze thing, and text on it
-        // - Make sure the plus button isn't too far gapped from a full bar of 9 stat points
+        // - Make each stat have their own color, not just all of them being red
 
         //setup shit
         const peer = new Peer(undefined, {
@@ -579,7 +579,7 @@
                                 drawRect(statPositionX, barPositionY, statX, fillY, 0, '#ff4040', '#ff00ff', 0)
                             }
                         }
-                        let plusButtonX = 17*(fov/360)
+                        let plusButtonX = 16*(fov/360)
                         let plusButtonPositionX = barPositionX+(fillX/2)-(plusButtonX/2)
                         drawRect(plusButtonPositionX, barPositionY, plusButtonX, fillY, 0, '#ff4040', '#ff00ff', 0)
                         
