@@ -382,7 +382,7 @@
                     cameraY += (playerY[otherFoot]-cameraY)/5
                 }
 
-                scale = canvas.height/fov
+                scale = Math.max(canvas.width / (fov * 16/9), canvas.height / fov)
                 let worldMouseX = (mouseX/scale) + cameraX
                 let worldMouseY = (mouseY/scale) + cameraY
 
@@ -400,7 +400,6 @@
                 ctx.save()
                 ctx.translate(canvas.width / 2, canvas.height / 2)
 
-                scale = canvas.height/fov
                 ctx.scale(scale, scale)
 
                 if (entityJSON.rockX) {
@@ -470,11 +469,19 @@
                     }
                 }
 
+                ctx.restore() // NOTE TO SELF - above this is for the world, below this is actual screen positions now
 
+                // HUD
+                let barX = 0.2
+                let barY = 0.06666666666
+                let barPositionX = canvas.width/2
+                let barPositionY = canvas.height - (canvas.height*barY/2)
+                let fillX = 0.19166666666
+                let fillY = 0.05
+                let percent = clamp(playerHP/(150+(playerJSON.level*6)+(stats.maxHealth*60)), 0, 1)
+                drawRect(barPositionX, barPositionY, canvas.width*barX, canvas.height*barY, 0, '#000000', '#ff00ff', 0)
+                drawRect(barPositionX-(canvas.width*(fillX/2))*(1-percent), barPositionY, canvas.width*fillX*percent, canvas.height*fillY, 0, '#ff0d0d', '#000000', 0)
 
-                ctx.restore()
-
-                // Send Player Updates
                 playerPackage = {
                     worldMouseX: worldMouseX,
                     worldMouseY: worldMouseY,
