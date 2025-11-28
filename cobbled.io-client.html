@@ -10,6 +10,7 @@
     <script>
         // TODO: (Apart from whatever is already in the comments)
         // - Make Crimson boulders have a red haze thing, and text on it
+        // - Make sure the plus button isn't too far gapped from a full bar of 9 stat points
 
         //setup shit
         const peer = new Peer(undefined, {
@@ -563,13 +564,6 @@
                 let upgradePoints = upgradePointsPerLevel[playerJSON.level] - totalUpgradePoints
                 if (upgradePoints != 0 || isKeyPressed('m') || isKeyPressed('M')) {
                     for (let i=0; i < 10; i++) {
-                        // main bar 96x9 (more like 96x10)
-                        // 95x8 without black background ( more like 94x8)
-                        // 77 wide for 9 stats and 8 gaps
-                        // gaps 1 wide
-                        // 69 wide for 9 stats
-                        // 17 wide plus button
-                        // 1 wide gap between stats and plus button
                         barX = (96*(fov/360))
                         barY = 10*(fov/360)
                         barPositionX = -(screenSizeX/2-(barX/2))+(2*(fov/360))
