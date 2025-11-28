@@ -295,6 +295,38 @@
             ctx.restore()
         }
 
+        function drawSquircle(x, y, width, height, rotation = 0, fillColor = '', strokeColor = '', lineWidth = 1, cornerRadius = 10) {
+            ctx.save()
+            ctx.translate(x + width / 2, y + height / 2)
+            ctx.rotate(degToRad(rotation))
+            
+            ctx.beginPath()
+            
+            // Draw squircle with rounded corners
+            ctx.moveTo(-width / 2 + cornerRadius, -height / 2)
+            ctx.lineTo(width / 2 - cornerRadius, -height / 2)
+            ctx.quadraticCurveTo(width / 2, -height / 2, width / 2, -height / 2 + cornerRadius)
+            ctx.lineTo(width / 2, height / 2 - cornerRadius)
+            ctx.quadraticCurveTo(width / 2, height / 2, width / 2 - cornerRadius, height / 2)
+            ctx.lineTo(-width / 2 + cornerRadius, height / 2)
+            ctx.quadraticCurveTo(-width / 2, height / 2, -width / 2, height / 2 - cornerRadius)
+            ctx.lineTo(-width / 2, -height / 2 + cornerRadius)
+            ctx.quadraticCurveTo(-width / 2, -height / 2, -width / 2 + cornerRadius, -height / 2)
+            ctx.closePath()
+            
+            if (fillColor) {
+                ctx.fillStyle = fillColor
+                ctx.fill()
+            }
+            if (strokeColor) {
+                ctx.strokeStyle = strokeColor
+                ctx.lineWidth = lineWidth
+                ctx.stroke()
+            }
+            
+            ctx.restore()
+        }
+
         // Other Functions
 
         function resize() {
@@ -489,47 +521,48 @@
                     }
                 }
 
-                ctx.restore() // NOTE TO SELF - above this is for the world, below this is actual screen positions now
-
                 // HUD
-                let barX = 0.2
-                let barY = 0.066666666666
-                let barPositionX = canvas.width/2
-                let barPositionY = canvas.height-(canvas.height*barY/2)
-                let fillX = 0.191666666666
-                let fillY = 0.05
-                let percent = clamp(playerHP/(150+(playerJSON.level*6)+(stats.maxHealth*60)), 0, 1)
-                drawRect(barPositionX, barPositionY, canvas.width*barX, canvas.height*barY, 0, '#000000', '#ff00ff', 0)
-                drawRect(barPositionX-(canvas.width*(fillX/2))*(1-percent), barPositionY, canvas.width*fillX*percent, canvas.height*fillY, 0, '#ff0d0d', '#000000', 0)
-                drawText(barPositionX, barPositionY, 24, '#ffffff', `${Math.floor(playerHP*100)/100} HP`, 0, 'center')
+                let screenSizeX = (canvas.width/scale)
+                let screenSizeY = (canvas.height/scale)
 
-                barX = 0.133333333333
-                barY = 0.044444444444
-                barPositionX = canvas.width/2
-                barPositionY = canvas.height-(canvas.height*barY/2)-(canvas.height*((0.066666666666+0.05)/2)) // uses the previous barY and fillY here
-                fillX = 0.127777777777
-                fillY = 0.033333333333
+                let barX = 48*3
+                let barY = 8*3
+                let barPositionX = 0
+                let barPositionY = screenSizeY/2-(barY/2)
+                let fillX = 46*3
+                let fillY = 6*3
+                let percent = clamp(playerHP/(150+(playerJSON.level*6)+(stats.maxHealth*60)), 0, 1)
+                drawRect(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0)
+                drawRect(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff0d0d', '#000000', 0)
+                drawText(barPositionX, barPositionY, 10, '#ffffff', `${Math.floor(playerHP*100)/100} HP`, 0, 'center')
+
+                barX = 48*2
+                barY = 8*2
+                barPositionX = 0 
+                barPositionY = screenSizeY/2-(barY/2)-((7*3))
+                fillX = 46*2
+                fillY = 6*2
                 percent = clamp((playerXP-xpPerLevel[playerJSON.level])/(xpPerLevel[playerJSON.level]-xpPerLevel[playerJSON.level-1]), 0.02, 0.98)
                 if (playerJSON.level == 0) {percent = playerXP == 0 ? 0.02 : clamp(playerXP/xpPerLevel[1], 0.02, 0.98)}
-                drawRect(barPositionX, barPositionY, canvas.width*barX, canvas.height*barY, 0, '#000000', '#ff00ff', 0)
-                drawRect(barPositionX-(canvas.width*(fillX/2))*(1-percent), barPositionY, canvas.width*fillX*percent, canvas.height*fillY, 0, '#ff5d0d', '#000000', 0)
-                drawText(barPositionX, barPositionY, 24, '#ffffff', `Level ${playerJSON.level} - ${Math.floor(playerXP)} XP`, 0, 'center')
-                
+                drawRect(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0)
+                drawRect(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff5d0d', '#000000', 0)
+                drawText(barPositionX, barPositionY, 10, '#ffffff', `Level ${playerJSON.level} - ${Math.floor(playerXP)} XP`, 0, 'center')
 
-
-                let minimapX = canvas.width-(canvas.width*0.09444/2)
-                let minimapY = canvas.height-(canvas.height*0.18889/2) 
-                let minimapWidth = canvas.width*0.09444
-                let minimapHeight = canvas.height*0.18889
-                let playerMapX = minimapX+((playerX[otherFoot]+playerX[activeFoot])/2)/((serverJSON.borderSize)/70)*0.73333333333
-                let playerMapY = minimapY+((playerY[otherFoot]+playerY[activeFoot])/2)/((serverJSON.borderSize)/70)*0.73333333333
-                let arrowSize = canvas.height*0.006944
-                drawRect(minimapX, minimapY, minimapWidth, minimapHeight, 0, '#82828240', '#c2c2c240', canvas.height*0.01)
+                let minimapSizeX = 70
+                let minimapSizeY = 70
+                let minimapPositionX = screenSizeX/2-(minimapSizeX/2)
+                let minimapPositionY = screenSizeY/2-(minimapSizeY/2)
+                let playerMapX = minimapPositionX+((playerX[otherFoot]+playerX[activeFoot])/2)/((serverJSON.borderSize)/(minimapSizeX/2))
+                let playerMapY = minimapPositionY+((playerY[otherFoot]+playerY[activeFoot])/2)/((serverJSON.borderSize)/(minimapSizeY/2))
+                let arrowSize = 2.5
+                drawRect(minimapPositionX, minimapPositionY, minimapSizeX, minimapSizeY, 0, '#82828240', '#c2c2c240', 2)
                 drawShape(playerMapX, playerMapY, arrowSize, 3, playerDirection[activeFoot], '#000000', 'ff00ff', 0)
 
-                
+                for (let i=0; i < 10; i++) {
+                    // stats will go here in the next update gussssy!! guys* // just in case you guyssssh are waitingg we aifjhs mne m we I WILL HATE THIS PART
+                }
 
-                drawText(10, canvas.height/2, 24, '000000', `${JSON.stringify(stats)}`, 0, 'left')
+                ctx.restore()
 
                 playerPackage = {
                     worldMouseX: worldMouseX,
