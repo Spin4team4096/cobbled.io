@@ -170,6 +170,7 @@
             serverList = await getKey('cobbled_serverList')
             serverName = serverList[1]
             serverJSON = await getKey(`${serverName}_config`)
+            serverJSON = JSON.parse(serverJSON)
             serverULID = await getKey(`${serverName}_ULID`)
             connectToServer(serverULID)
             console.log(`list: ${serverList} name: ${serverName} json: ${serverJSON} ulid: ${serverULID}`)
@@ -282,6 +283,18 @@
             ctx.restore()
         }
 
+        function drawText(x, y, size, color, text, dir = 0, align = 'center', font = 'Arial') {
+            ctx.save()
+            ctx.fillStyle = color
+            ctx.font = `${size}px ${font}`
+            ctx.textAlign = align
+            ctx.textBaseline = 'middle'
+            ctx.translate(x, y)
+            ctx.rotate(degToRad(dir))
+            ctx.fillText(text, 0, 0)
+            ctx.restore()
+        }
+
         // Other Functions
 
         function resize() {
@@ -320,6 +333,9 @@
             stepReach: 0,
             fieldOfView: 0
         }
+        xpPerLevel = [0,5,15,26,40,64,102,153,222,310,418,543,678,847,1016,1219,1450,1711,2000,2320,2668,3041,3436,3848,4271,4698,5167,5683,6251,6876,7494,8168,8903,9704,10577,11423,12336,13322,14387,15537,16624,17787,19032,20364,21789,23314,25645,28209,31029,34131,37544,39421,41392,43461,45634,47915,50310,52825,55466,58239,61150]
+        upgradePointsPerLevel = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,50,51,51,52,52,53,53,54,54,55]
+        // the 2 above may not be the same as the server, so whenever changing these for the client, also change it for the server
         playerX = 0
         playerY = 0
         playerHP = 0
@@ -346,6 +362,12 @@
                 playerDirection = entityJSON.playerDirection[playerID]
                 playerHeight = entityJSON.playerHeight[playerID]
                 playerSize = entityJSON.playerSize[playerID]
+
+                for (let l=0; l < xpPerLevel.length; l++) {
+                    if (entityJSON.playerXP[playerID] > xpPerLevel[l]) {
+                        playerJSON.level = l
+                    }
+                }
 
                 if (isKeyPressed('a') || isKeyPressed('A')) {
                     playerJSON.stopped = 1
@@ -471,14 +493,39 @@
 
                 // HUD
                 let barX = 0.2
-                let barY = 0.06666666666
+                let barY = 0.066666666666
                 let barPositionX = canvas.width/2
-                let barPositionY = canvas.height - (canvas.height*barY/2)
-                let fillX = 0.19166666666
+                let barPositionY = canvas.height-(canvas.height*barY/2)
+                let fillX = 0.191666666666
                 let fillY = 0.05
                 let percent = clamp(playerHP/(150+(playerJSON.level*6)+(stats.maxHealth*60)), 0, 1)
                 drawRect(barPositionX, barPositionY, canvas.width*barX, canvas.height*barY, 0, '#000000', '#ff00ff', 0)
                 drawRect(barPositionX-(canvas.width*(fillX/2))*(1-percent), barPositionY, canvas.width*fillX*percent, canvas.height*fillY, 0, '#ff0d0d', '#000000', 0)
+                drawText(barPositionX, barPositionY, 24, '#ffffff', `${Math.floor(playerHP*100)/100} HP`, 0, 'center')
+
+                barX = 0.133333333333
+                barY = 0.044444444444
+                barPositionX = canvas.width/2
+                barPositionY = canvas.height-(canvas.height*barY/2)-(canvas.height*((0.066666666666+0.05)/2)) // uses the previous barY and fillY here
+                fillX = 0.127777777777
+                fillY = 0.033333333333
+                percent = clamp((playerXP-xpPerLevel[playerJSON.level])/(xpPerLevel[playerJSON.level]-xpPerLevel[playerJSON.level-1]), 0.02, 0.98)
+                if (playerJSON.level == 0) {percent = playerXP == 0 ? 0.02 : clamp(playerXP/xpPerLevel[1], 0.02, 0.98)}
+                drawRect(barPositionX, barPositionY, canvas.width*barX, canvas.height*barY, 0, '#000000', '#ff00ff', 0)
+                drawRect(barPositionX-(canvas.width*(fillX/2))*(1-percent), barPositionY, canvas.width*fillX*percent, canvas.height*fillY, 0, '#ff5d0d', '#000000', 0)
+                drawText(barPositionX, barPositionY, 24, '#ffffff', `Level ${playerJSON.level} - ${Math.floor(playerXP)} XP`, 0, 'center')
+                
+
+
+                let minimapX = canvas.width-(canvas.width*0.09444/2)
+                let minimapY = canvas.height-(canvas.height*0.18889/2) 
+                let minimapWidth = canvas.width*0.09444
+                let minimapHeight = canvas.height*0.18889
+                let playerMapX = minimapX+((playerX[otherFoot]+playerX[activeFoot])/2)/((serverJSON.borderSize)/70)*0.73333333333
+                let playerMapY = minimapY+((playerY[otherFoot]+playerY[activeFoot])/2)/((serverJSON.borderSize)/70)*0.73333333333
+                let arrowSize = canvas.height*0.006944
+                drawRect(minimapX, minimapY, minimapWidth, minimapHeight, 0, '#82828240', '#c2c2c240', canvas.height*0.01)
+                drawShape(playerMapX, playerMapY, arrowSize, 3, playerDirection[activeFoot], '#000000', 'ff00ff', 0)
 
                 playerPackage = {
                     worldMouseX: worldMouseX,
