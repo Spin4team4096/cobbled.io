@@ -584,7 +584,8 @@
                         let plusButtonPositionX = barPositionX+(fillX/2)-(plusButtonX/2)
                         drawRect(plusButtonPositionX, barPositionY, plusButtonX, fillY, 0, '#ff4040', '#ff00ff', 0)
 
-                        drawText((barPositionX+(barX/2))-(plusButtonX)-3, barPositionY, 6*(fov/360), '#ffffff', reversedStatDisplayText[i], 0, 'right')
+                        drawText((barPositionX)-(plusButtonX/2)-3, barPositionY, 6*(fov/360), '#ffffff', reversedStatDisplayText[i].slice(0, -4), 0, 'center')
+                        drawText((barPositionX+(barX/2))-(plusButtonX)-3, barPositionY, 6*(fov/360), '#ffffff', reversedStatDisplayText[i].slice(-3), 0, 'right')
                         
                     }
                 }
