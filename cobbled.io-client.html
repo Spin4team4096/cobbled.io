@@ -10,7 +10,8 @@
     <script>
         // TODO: (Apart from whatever is already in the comments)
         // - Make Crimson boulders have a red haze thing, and text on it
-        // - Make each stat have their own color, not just all of them being red
+        // - Make stat colors have more saturation
+        // - Add playerName, and make the server store this name at entityJSON.playerName
 
         //setup shit
         const peer = new Peer(undefined, {
@@ -371,6 +372,7 @@
         // the 2 above may not be the same as the server, so whenever changing these for the client, also change it for the server
         reversedStatNames = ['fieldOfView','stepReach','stepSpeed','duplication','kickDamage','kickAccuracy','kickSpeed','maxHealth','activeRegen','passiveRegen']
         reversedStatDisplayText = ['Field of View [0]','Step Reach [9]','Step Speed [8]','Duplication [7]','Kick Damage [6]','Kick Accuracy [5]','Kick Speed [4]','Max Health [3]','Active Regen [2]','Passive Regen [1]']
+        reversedStatColors = ['#9966ff', '#ff9966', '#6696ff', '#ffc266', '#ff6666', '#87e65c', '#6696ff', '#9966ff', '#ff6666', '#fc66ff']
         playerX = 0
         playerY = 0
         playerHP = 0
@@ -577,12 +579,12 @@
                             if (stats[reversedStatNames[i]] > s) {
                                 statX = 69/9*(fov/360)
                                 statPositionX = barPositionX+(s*(statX+1*(fov/360)))-(barX/2)+(statX/2)+1*(fov/360)
-                                drawRect(statPositionX, barPositionY, statX, fillY, 0, '#ff4040', '#ff00ff', 0)
+                                drawRect(statPositionX, barPositionY, statX, fillY, 0, reversedStatColors[i], '#ff00ff', 0)
                             }
                         }
                         let plusButtonX = 16*(fov/360)
                         let plusButtonPositionX = barPositionX+(fillX/2)-(plusButtonX/2)
-                        drawRect(plusButtonPositionX, barPositionY, plusButtonX, fillY, 0, '#ff4040', '#ff00ff', 0)
+                        drawRect(plusButtonPositionX, barPositionY, plusButtonX, fillY, 0, reversedStatColors[i], '#ff00ff', 0)
 
                         drawText((barPositionX)-(plusButtonX/2)-3, barPositionY, 6*(fov/360), '#ffffff', reversedStatDisplayText[i].slice(0, -4), 0, 'center')
                         drawText((barPositionX+(barX/2))-(plusButtonX)-3, barPositionY, 6*(fov/360), '#ffffff', reversedStatDisplayText[i].slice(-3), 0, 'right')
