@@ -375,8 +375,8 @@
                     playerJSON.stopped = 0
                 }
                 playerJSON.mode = 0
-                if (leftMouseDown) {playerJSON.mode = 1}
-                if (rightMouseDown) {playerJSON.mode = -1}
+                if (leftMouseDown || isKeyPressed('Control')) {playerJSON.mode = 1}
+                if (rightMouseDown || isKeyPressed('Shift')) {playerJSON.mode = -1}
 
                 switch (playerJSON.mode) {
                     case -1: playerModeSpeedMultiplier = 0.75
