@@ -582,14 +582,15 @@
                                 drawRect(statPositionX, barPositionY, statX, fillY, 0, reversedStatColors[i], '#ff00ff', 0)
                             }
                         }
-                        let plusButtonX = 16*(fov/360)
-                        let plusButtonPositionX = barPositionX+(fillX/2)-(plusButtonX/2)
+                        plusButtonX = 16*(fov/360)
+                        plusButtonPositionX = barPositionX+(fillX/2)-(plusButtonX/2)
                         drawRect(plusButtonPositionX, barPositionY, plusButtonX, fillY, 0, reversedStatColors[i], '#ff00ff', 0)
 
                         drawText((barPositionX)-(plusButtonX/2)-3, barPositionY, 6*(fov/360), '#ffffff', reversedStatDisplayText[i].slice(0, -4), 0, 'center')
                         drawText((barPositionX+(barX/2))-(plusButtonX)-3, barPositionY, 6*(fov/360), '#ffffff', reversedStatDisplayText[i].slice(-3), 0, 'right')
                         
                     }
+                    drawText((barPositionX+(barX/2))-5, barPositionY-15, 20*(fov/360), '#000000', `${upgradePoints}x`, 0, 'right')
                 }
 
                 ctx.restore()
