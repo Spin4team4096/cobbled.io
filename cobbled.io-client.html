@@ -527,6 +527,10 @@
                 drawRect(minimapX, minimapY, minimapWidth, minimapHeight, 0, '#82828240', '#c2c2c240', canvas.height*0.01)
                 drawShape(playerMapX, playerMapY, arrowSize, 3, playerDirection[activeFoot], '#000000', 'ff00ff', 0)
 
+                
+
+                drawText(10, canvas.height/2, 24, '000000', `${JSON.stringify(stats)}`, 0, 'left')
+
                 playerPackage = {
                     worldMouseX: worldMouseX,
                     worldMouseY: worldMouseY,
