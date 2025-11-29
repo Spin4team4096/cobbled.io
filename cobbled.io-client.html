@@ -470,7 +470,7 @@
                 if (lastNotificationID != entityJSON.serverNotification.id && lastNotificationID != null) {
                     notifications.text.push(entityJSON.serverNotification.text)
                     notifications.color.push(entityJSON.serverNotification.color)
-                    notifications.timer.push(30*5)
+                    notifications.timer.push(30*7)
                 }
                 for (let i=0; i < notifications.text.length; i++) {
                     notifications.timer[i] -= 1
