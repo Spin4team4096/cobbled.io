@@ -23,18 +23,13 @@
         // TODO: (Apart from whatever is already in the comments)
         // - Make Crimson boulders have a red haze thing, and text on it
         // - Make stat colors have more saturation
-        // - Add playerName, and make the server store this name at entityJSON.playerName
         // - Add local notification "Don't forget to step on a rock!" or "You killed [player]"
         // - Add controller support
         // - Add mobile controls
         // - BUY THE DOMAIN ALREADY
-        // - Render health bars for boulders
         // - Render player arrows
         // - Add boulder & rock variation (6-8 sides)
         // - Use squircles for stats & bars?
-        // - Add death screen
-        // - Add respawning
-        // - Add a menu before spawning
 
         //setup shit
         const peer = new Peer(undefined, {
@@ -661,9 +656,27 @@
                         if (entityJSON.playerHP[i] > 0) {
                             if (i == playerID) {
                                 if (entityJSON.playerHeight[i][0] < entityJSON.playerHeight[i][1]) {
+                                    const arrowSize1 = (playerSize*((100+(playerHeight[0]/1.5))/100))/3
+                                    const arrowSize2 = (playerSize*((100+(playerHeight[1]/1.5))/100))/3
+
                                     drawRect((playerX[0] + playerX[1])/2 - cameraX, (playerY[0] + playerY[1])/2 - cameraY, distanceTo(playerX[1], playerY[1], playerX[0], playerY[0]), 8, directionTo(playerX[1], playerY[1], playerX[0], playerY[0]), '#ff2626', '#bf1d1d', 1)
+                                    
                                     drawCircle(playerX[0]-cameraX, playerY[0]-cameraY, (playerSize*((100+(playerHeight[0]/1.5))/100))/2, playerDirection[0], '#ff2626', '#bf1d1d', 2)
+                                    drawRect(playerX[0]-cameraX-Math.cos(degToRad(playerDirection[0]))*((playerSize*((100+(playerHeight[0]/1.5))/100))/4 + (playerSize*((100+(playerHeight[0]/1.5))/100))*-0.2), playerY[0]-cameraY-Math.sin(degToRad(playerDirection[0]))*((playerSize*((100+(playerHeight[0]/1.5))/100))/4 + (playerSize*((100+(playerHeight[0]/1.5))/100))*-0.2), (playerSize*((100+(playerHeight[0]/1.5))/100))/2, (playerSize*((100+(playerHeight[0]/1.5))/100))/4, playerDirection[0], '#bf1d1d', '#ff00ff', 0)
+                                    const arrowX1 = playerX[0]-cameraX + Math.cos(degToRad(playerDirection[0])) * ((playerSize*((100+(playerHeight[0]/1.5))/100))/2 - arrowSize1 * 0.7)
+                                    const arrowY1 = playerY[0]-cameraY + Math.sin(degToRad(playerDirection[0])) * ((playerSize*((100+(playerHeight[0]/1.5))/100))/2 - arrowSize1 * 0.7)
+                                    drawLine(arrowX1, arrowY1, 
+                                        [arrowSize1 * 0.1, -arrowSize1 * 0.7, -arrowSize1 * 0.7], 
+                                        [0, arrowSize1 * 0.7, -arrowSize1 * 0.7], 
+                                        playerDirection[0], '#bf1d1d', '#bf1d1d', 2, true)
                                     drawCircle(playerX[1]-cameraX, playerY[1]-cameraY, (playerSize*((100+(playerHeight[1]/1.5))/100))/2, playerDirection[1], '#ff2626', '#bf1d1d', 2)
+                                    drawRect(playerX[1]-cameraX-Math.cos(degToRad(playerDirection[1]))*((playerSize*((100+(playerHeight[1]/1.5))/100))/4 + (playerSize*((100+(playerHeight[1]/1.5))/100))*-0.2), playerY[1]-cameraY-Math.sin(degToRad(playerDirection[1]))*((playerSize*((100+(playerHeight[1]/1.5))/100))/4 + (playerSize*((100+(playerHeight[1]/1.5))/100))*-0.2), (playerSize*((100+(playerHeight[1]/1.5))/100))/2, (playerSize*((100+(playerHeight[1]/1.5))/100))/4, playerDirection[1], '#bf1d1d', '#ff00ff', 0)
+                                    const arrowX2 = playerX[1]-cameraX + Math.cos(degToRad(playerDirection[1])) * ((playerSize*((100+(playerHeight[1]/1.5))/100))/2 - arrowSize2 * 0.7)
+                                    const arrowY2 = playerY[1]-cameraY + Math.sin(degToRad(playerDirection[1])) * ((playerSize*((100+(playerHeight[1]/1.5))/100))/2 - arrowSize2 * 0.7)
+                                    drawLine(arrowX2, arrowY2,
+                                        [arrowSize2 * 0.1, -arrowSize2 * 0.7, -arrowSize2 * 0.7],
+                                        [0, arrowSize2 * 0.7, -arrowSize2 * 0.7],
+                                        playerDirection[1], '#bf1d1d', '#bf1d1d', 2, true)
                                 } else {
                                     drawRect((playerX[0] + playerX[1])/2 - cameraX, (playerY[0] + playerY[1])/2 - cameraY, distanceTo(playerX[1], playerY[1], playerX[0], playerY[0]), 8, directionTo(playerX[1], playerY[1], playerX[0], playerY[0]), '#ff2626', '#bf1d1d', 1)
                                     drawCircle(playerX[1]-cameraX, playerY[1]-cameraY, (playerSize*((100+(playerHeight[1]/1.5))/100))/2, playerDirection[1], '#ff2626', '#bf1d1d', 2)
@@ -705,6 +718,21 @@
                             percent = clamp(entityJSON.boulderHP[i]/entityJSON.boulderOriginalHP[i], 0, 1)
                             drawRect(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0)
                             drawRect(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff0d0d', '#000000', 0)
+                        }
+                    }
+                }
+                if (entityJSON.sanctuaryX) {
+                    for (let i=0; i < entityJSON.sanctuaryX.length; i++) {
+                        if (entityJSON.sanctuaryHP[i] != entityJSON.sanctuaryOriginalHP[i]) {
+                            barX = 48*0.75*(fov/360)
+                            barY = 8*0.75*(fov/360)
+                            barPositionX = entityJSON.sanctuaryX[i]-cameraX
+                            barPositionY = entityJSON.sanctuaryY[i]+((entityJSON.sanctuarySize[i]/2)+5)-cameraY
+                            fillX = 46*0.75*(fov/360)
+                            fillY = 6*0.75*(fov/360)
+                            percent = clamp(entityJSON.sanctuaryHP[i]/entityJSON.sanctuaryOriginalHP[i], 0, 1)
+                            drawRect(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0)
+                            drawRect(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#787878', '#000000', 0)
                         }
                     }
                 }
