@@ -6,6 +6,18 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 <body style="margin:0; overflow:hidden;">
     <canvas id="game"></canvas>
+    <input type="text" id="usernameInput" placeholder="Enter username..." maxlength="20" style="
+        position: absolute;
+        width: 200px;
+        height: 22px;
+        font-size: 16px;
+        text-align: center;
+        border: 2px solid #bfbfbf;
+        background: #ffffff;
+        color: #000000;
+        display: none;
+        z-index: 1000;
+    ">
 
     <script>
         // TODO: (Apart from whatever is already in the comments)
@@ -20,6 +32,9 @@
         // - Render player arrows
         // - Add boulder & rock variation (6-8 sides)
         // - Use squircles for stats & bars?
+        // - Add death screen
+        // - Add respawning
+        // - Add a menu before spawning
 
         //setup shit
         const peer = new Peer(undefined, {
@@ -167,10 +182,12 @@
             }
         }
 
-        async function connected() {
+        async function spawnPlayer() {
             console.log('Connected to server!')
             await waitUntil(() => playerID >= 0, 50)
             sendData(serverULID, 'spawnPlayer', playerID)
+            menu = 0
+            await waitUntil(() => entityJSON.playerHP && entityJSON.playerHP[playerID] > 0, 50)
         }
 
         async function firstConnect() {
@@ -190,8 +207,8 @@
             conn = peer.connect(serverULID)
             
             conn.on('open', () => {
-                connected()
-
+                cameraTargetX = randomInt(-serverJSON.borderSize, serverJSON.borderSize)
+                cameraTargetY = randomInt(-serverJSON.borderSize, serverJSON.borderSize)
             })
             
             conn.on('data', (data) => {
@@ -230,6 +247,34 @@
             if (thickness > 0) ctx.strokeRect(0-(sizex/2), 0-(sizey/2), sizex, sizey,)
             ctx.restore()
 
+        }
+
+        function drawRectHTML(element, x, y, sizex, sizey, dir, fill, outline, thickness) {
+            const canvasRect = canvas.getBoundingClientRect()
+            const centerX = canvasRect.width / 2
+            const centerY = canvasRect.height / 2
+            
+            const screenX = Math.round(centerX + (x * scale))
+            const screenY = Math.round(centerY + (y * scale))
+            const screenWidth = Math.round(sizex * scale)
+            const screenHeight = Math.round(sizey * scale)
+            
+            element.style.left = (screenX - Math.round(screenWidth/2)) + 'px'
+            element.style.top = (screenY - Math.round(screenHeight/2)) + 'px'
+            element.style.width = screenWidth + 'px'
+            element.style.height = screenHeight + 'px'
+            
+            element.style.backgroundColor = fill || 'transparent'
+            element.style.border = thickness > 0 ? `${thickness * scale}px solid ${outline}` : 'none'
+            element.style.transform = `rotate(${dir}deg)`
+            element.style.boxSizing = 'border-box'
+            element.style.margin = '0'
+            element.style.padding = '0'
+            element.style.position = 'absolute'
+            
+            if (element.tagName === 'INPUT') {
+                element.style.textAlign = 'center'
+            }
         }
 
         function drawShape(x, y, radius, sides, dir, fill, outline, thickness) {
@@ -312,7 +357,6 @@
             
             ctx.beginPath()
             
-            // Draw squircle with rounded corners
             ctx.moveTo(-width / 2 + cornerRadius, -height / 2)
             ctx.lineTo(width / 2 - cornerRadius, -height / 2)
             ctx.quadraticCurveTo(width / 2, -height / 2, width / 2, -height / 2 + cornerRadius)
@@ -395,12 +439,17 @@
         playerSize = 0
         let cameraX = 0
         let cameraY = 0
+        let cameraTargetX = 0
+        let cameraTargetY = 0
+        let cameraSpeed = 0
         let playerID = -1
         lastNotificationID = null
+        menu = 1
+        deathScreen = 0
         resize()
-        startClientLoop()
-
         let running = true
+        startClientLoop()
+        startMenuLoop()
 
         function startClientLoop() {
             setInterval(() => {
@@ -448,9 +497,27 @@
 
                 // main
 
-                if (playerID >= 0) {
+                if (playerID >= 0 && menu == 0) {
                     cameraX += (playerX[otherFoot]-cameraX)/5
                     cameraY += (playerY[otherFoot]-cameraY)/5
+                }
+
+                if (menu == 1) {
+                    if (cameraSpeed < 0.5) {
+                        cameraSpeed += 0.005
+                        cameraX += cameraSpeed*Math.cos(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
+                        cameraY += cameraSpeed*Math.sin(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
+                    } else if (distanceTo(cameraTargetX, cameraTargetY, cameraX, cameraY) > 50) {
+                        cameraX += 0.5*Math.cos(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
+                        cameraY += 0.5*Math.sin(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
+                    } else if (distanceTo(cameraTargetX, cameraTargetY, cameraX, cameraY) > 10) {
+                        cameraX += (distanceTo(cameraTargetX, cameraTargetY, cameraX, cameraY)/100)*Math.cos(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
+                        cameraY += (distanceTo(cameraTargetX, cameraTargetY, cameraX, cameraY)/100)*Math.sin(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
+                    } else {
+                        cameraSpeed = 0
+                        cameraTargetX = randomInt(-serverJSON.borderSize, serverJSON.borderSize)
+                        cameraTargetY = randomInt(-serverJSON.borderSize, serverJSON.borderSize)
+                    }
                 }
 
                 scale = Math.max(canvas.width / (fov * 16/9), canvas.height / fov)
@@ -490,6 +557,66 @@
 
                 ctx.scale(scale, scale)
 
+                let screenSizeX = (canvas.width/scale)
+                let screenSizeY = (canvas.height/scale)
+                
+                // Grid
+                let gridSize = 10
+                ctx.fillStyle = '#f7f8ff'
+                ctx.fillRect(-screenSizeX/2, -screenSizeY/2, screenSizeX, screenSizeY)
+                ctx.strokeStyle = '#f1f1f6'
+                ctx.lineWidth = 1
+                
+                for (let x = Math.floor((-screenSizeX/2 + cameraX) / gridSize) * gridSize; x < screenSizeX/2 + cameraX; x += gridSize) {
+                    let screenX = x - cameraX
+                    ctx.beginPath()
+                    ctx.moveTo(screenX, -screenSizeY/2)
+                    ctx.lineTo(screenX, screenSizeY/2)
+                    ctx.stroke()
+                }
+
+                for (let y = Math.floor((-screenSizeY/2 + cameraY) / gridSize) * gridSize; y < screenSizeY/2 + cameraY; y += gridSize) {
+                    let screenY = y - cameraY
+                    ctx.beginPath()
+                    ctx.moveTo(-screenSizeX/2, screenY)
+                    ctx.lineTo(screenSizeX/2, screenY)
+                    ctx.stroke()
+                }
+
+                let darknessColor = '#00000026'
+                let leftWorldEdge = -serverJSON.borderSize-cameraX
+                let rightWorldEdge = serverJSON.borderSize-cameraX
+                let topWorldEdge = -serverJSON.borderSize-cameraY
+                let bottomWorldEdge = serverJSON.borderSize-cameraY
+
+                if (leftWorldEdge > -screenSizeX/2) {
+                    let width = leftWorldEdge-(-screenSizeX/2)
+                    drawRect(-screenSizeX/2+width/2, 0, width, screenSizeY, 0, darknessColor, '', 0)
+                }
+                if (rightWorldEdge < screenSizeX/2) {
+                    let width = screenSizeX/2-rightWorldEdge
+                    drawRect(screenSizeX/2-width/2, 0, width, screenSizeY, 0, darknessColor, '', 0)
+                }
+                if (topWorldEdge > -screenSizeY/2) {
+                    let height = topWorldEdge-(-screenSizeY/2)
+                    let xStart = Math.max(-screenSizeX/2, leftWorldEdge)
+                    let xEnd = Math.min(screenSizeX/2, rightWorldEdge)
+                    let width = xEnd-xStart
+                    if (width > 0) {
+                        drawRect((xStart+xEnd)/2, -screenSizeY/2+height/2, width, height, 0, darknessColor, '', 0)
+                    }
+                }
+                if (bottomWorldEdge < screenSizeY/2) {
+                    let height = screenSizeY/2-bottomWorldEdge
+                    let xStart = Math.max(-screenSizeX/2, leftWorldEdge)
+                    let xEnd = Math.min(screenSizeX/2, rightWorldEdge)
+                    let width = xEnd-xStart
+                    if (width > 0) {
+                        drawRect((xStart+xEnd)/2, screenSizeY/2-height/2, width, height, 0, darknessColor, '', 0)
+                    }
+                }
+
+                // Entities - no: en titties :P
                 if (entityJSON.rockX) {
                     for (let i=0; i < entityJSON.rockX.length; i++) {
                         if (entityJSON.rockDuplicated[i] == 1) {
@@ -557,17 +684,59 @@
                     }
                 }
 
-                // HUD
-                let screenSizeX = (canvas.width/scale)
-                let screenSizeY = (canvas.height/scale)
-
-                let barX = 48*3*(fov/360)
-                let barY = 8*3*(fov/360)
+                let barX = 0
+                let barY = 0
                 let barPositionX = 0
-                let barPositionY = screenSizeY/2-(barY/2)
-                let fillX = 46*3*(fov/360)
-                let fillY = 6*3*(fov/360)
-                let percent = clamp(playerHP/(150+(playerJSON.level*6)+(stats.maxHealth*60)), 0, 1)
+                let barPositionY = 0
+                let fillX = 0
+                let fillY = 0
+                let percent = 0
+
+                // Health Bars
+                if (entityJSON.boulderX) {
+                    for (let i=0; i < entityJSON.boulderX.length; i++) {
+                        if (entityJSON.boulderHP[i] != entityJSON.boulderOriginalHP[i]) {
+                            barX = 48*0.75*(fov/360)
+                            barY = 8*0.75*(fov/360)
+                            barPositionX = entityJSON.boulderX[i]-cameraX
+                            barPositionY = entityJSON.boulderY[i]+((entityJSON.boulderSize[i]/2)+5)-cameraY
+                            fillX = 46*0.75*(fov/360)
+                            fillY = 6*0.75*(fov/360)
+                            percent = clamp(entityJSON.boulderHP[i]/entityJSON.boulderOriginalHP[i], 0, 1)
+                            drawRect(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0)
+                            drawRect(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff0d0d', '#000000', 0)
+                        }
+                    }
+                }
+                if (entityJSON.playerX) {
+                    for (let i=0; i < entityJSON.playerX.length; i++) {
+                        if (entityJSON.playerHP[i] > 0) {
+                            barX = 48*0.75*(fov/360)
+                            barY = 8*0.75*(fov/360)
+                            let lowestFoot = entityJSON.playerY[i][0] < entityJSON.playerY[i][1] ? 1 : 0
+                            let highestFoot = entityJSON.playerY[i][0] < entityJSON.playerY[i][1] ? 0 : 1
+                            barPositionX = entityJSON.playerX[i][lowestFoot]-cameraX
+                            barPositionY = entityJSON.playerY[i][lowestFoot]+((entityJSON.playerSize[i]/2)+7)-cameraY
+                            fillX = 46*0.75*(fov/360)
+                            fillY = 6*0.75*(fov/360)
+                            percent = clamp(entityJSON.playerHP[i]/150, 0, 1) // change 150 to the actual max health the player can have - maybe the server needs to send this info
+                            drawRect(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0)
+                            drawRect(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff0d0d', '#000000', 0)
+                            namePositionX = entityJSON.playerX[i][highestFoot]-cameraX
+                            namePositionY = entityJSON.playerY[i][highestFoot]-((entityJSON.playerSize[i]/2)+7)-cameraY
+                            drawText(namePositionX, namePositionY, 8*(fov/360), '#000000', `${entityJSON.playerUsername ? entityJSON.playerUsername[i] : 'unknown??? REPORT THIS BUG'}`, 0, 'center')
+                        }
+                    }
+                }
+
+                // HUD
+                barX = 48*3*(fov/360)
+                barY = 8*3*(fov/360)
+                barPositionX = 0
+                barPositionY = screenSizeY/2-(barY/2)
+                fillX = 46*3*(fov/360)
+                fillY = 6*3*(fov/360)
+                percent = clamp(playerHP/(150+(playerJSON.level*6)+(stats.maxHealth*60)), 0, 1)
                 drawRect(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0)
                 drawRect(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff0d0d', '#000000', 0)
                 drawText(barPositionX, barPositionY, 10*(fov/360), '#ffffff', `${Math.floor(playerHP*100)/100} HP`, 0, 'center')
@@ -596,7 +765,7 @@
 
                 let totalUpgradePoints = Object.values(stats).reduce((sum, val) => sum + val, 0)
                 let upgradePoints = upgradePointsPerLevel[playerJSON.level] - totalUpgradePoints
-                if (upgradePoints != 0 || isKeyPressed('m') || isKeyPressed('M')) {
+                if (upgradePoints != 0 || isKeyPressed('m') || isKeyPressed('M') || deathScreen == 1) {
                     for (let i=0; i < 10; i++) {
                         barX = (96*(fov/360))
                         barY = 10*(fov/360)
@@ -628,6 +797,35 @@
                     drawText(0, (i+1)*12*(fov/360)-(screenSizeY/2), 10*(fov/360), notifications.color[i], notifications.text[i], 0, 'center')
                 }
 
+                // Death Screen
+                if (deathScreen == 1) {
+                    drawText(0, -50*(fov/360), 20*(fov/360), '#000000', `You failed to step on a rock`, 0, 'center')
+                    drawText(0, 0, 75*(fov/360), '#ff0000', `YOU DIED`, 0, 'center')
+                    drawText(0, 40*(fov/360), 16*(fov/360), '#000000', `Press Enter to respawn`, 0, 'center')
+                    let respawnLevel = 0
+                    for (let l = 0; l < xpPerLevel.length; l++) {
+                        if (Math.min(playerXP / 10, xpPerLevel[24]) >= xpPerLevel[l]) {
+                            respawnLevel = l
+                        }
+                    }
+                    drawText(0, 55*(fov/360), 8*(fov/360), '#000000', `You will respawn at level ${respawnLevel}`, 0, 'center')
+                }
+                
+                if (menu == 1) {
+                    let input = document.getElementById('usernameInput')
+                    input.style.display = 'block'
+                    
+                    drawRectHTML(input, 0, 0, 200*(fov/360), 22*(fov/360), 0, '#ffffff', '#bfbfbf', 2)
+                    input.style.fontSize = (16*(fov/360)*scale) + 'px'
+                    
+                    drawText(0, 22*(fov/360), 16*(fov/360), '#000000', `Press Enter to play!`, 0, 'center')
+                    drawText(0, -22*(fov/360), 16*(fov/360), '#000000', `Connected!`, 0, 'center')
+                    
+                    username = input.value || 'unnamed'
+                } else {
+                    document.getElementById('usernameInput').style.display = 'none'
+                }
+
                 ctx.restore()
 
                 playerPackage = {
@@ -635,13 +833,46 @@
                     worldMouseY: worldMouseY,
                     mode: playerJSON.mode,
                     stopped: playerJSON.stopped,
-                    upgradeKey: playerJSON.upgradeKey
+                    upgradeKey: playerJSON.upgradeKey,
+                    username: username,
                 }
                 sendData(serverULID, 'playerUpdate', playerID, playerPackage)
                 
             }, 33.33)
         }
+    
+        async function startMenuLoop() {
+            let enterWasPressed = false
+            
+            setInterval(() => {
+                if (!running) return
 
+                let enterPressed = isKeyPressed('Enter')
+                
+                if (menu == 0 && deathScreen == 0 && playerID >= 0 && entityJSON.playerHP && entityJSON.playerHP[playerID] <= 0) {
+                    deathScreen = 1
+                    menu = 0
+                }
+                
+                if (enterPressed && !enterWasPressed) {
+                    if (menu == 1) {
+                        menu = 0
+                        spawnPlayer()
+                    } else if (deathScreen == 1) {
+                        deathScreen = 0
+                        menu = 1
+                    }
+                }
+
+                if (deathScreen == 1 && entityJSON.playerHP[playerID] > 0 && entityJSON.playerHP) {
+                    deathScreen = 0
+                }
+
+                enterWasPressed = enterPressed
+
+                
+            }, 33.33)
+        }
 
     </script>
 </body>
