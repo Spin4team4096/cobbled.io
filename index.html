@@ -25,7 +25,6 @@
         // - Add local notification "Don't forget to step on a rock!" or "You killed [player]"
         // - Add controller support
         // - Add mobile controls
-        // - BUY THE DOMAIN ALREADY
         // - Add boulder & rock variation (6-8 sides)
         // - Add server selector (top)
         // - Add "report an issue" button (under "press enter")
@@ -36,6 +35,10 @@
         // - SHAKE THE SCREEN WHEN TAKING DAMAGE ON A STEP idk how, maybe the server needs to send a packet telling the player to SHAKE SHAKE SHAKE - 1, 2, SHAKE, SHAKE, 1, 2, SHAKE, SHAKE, ABAaah! eeeaaaeeeuuuaaaaiiioooouuuuueeeuuuooo... GOGOOGLEEE ITTT
         // - Fix death screen to have a custom death msg based on what actually killed you (probably the server needs to store entityJSON.playerDeathReason for the client to use (will say the last entity name that hit the player))
         // - Add leaderboard! client-side is enough (has XP data of every player anyway)
+        // - Add XP above players
+        // - Add sacntuary on minimap
+        // - Add 
+        // - Scale entity hp bars with fov
 
         //setup shit
         const peer = new Peer(undefined, {
@@ -188,6 +191,7 @@
             await waitUntil(() => playerID >= 0, 50)
             sendData(serverULID, 'spawnPlayer', playerID)
             menu = 0
+            deathScreen = 0
             await waitUntil(() => entityJSON.playerHP && entityJSON.playerHP[playerID] > 0, 50)
         }
 
@@ -934,7 +938,7 @@
         async function startMenuLoop() {
             let enterWasPressed = false
             
-            setInterval(() => {
+            setInterval(async () => {
                 if (!running) return
 
                 let enterPressed = isKeyPressed('Enter')
@@ -947,7 +951,7 @@
                 if (enterPressed && !enterWasPressed) {
                     if (menu == 1) {
                         menu = 0
-                        spawnPlayer()
+                        await spawnPlayer()
                     } else if (deathScreen == 1) {
                         deathScreen = 0
                         menu = 1
