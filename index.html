@@ -37,7 +37,7 @@
         // - Add leaderboard! client-side is enough (has XP data of every player anyway)
         // - Add XP above players
         // - Add sacntuary on minimap
-        // - Add 
+        // - Add [smth important here that i forgot]
         // - Scale entity hp bars with fov
 
         //setup shit
@@ -936,7 +936,7 @@
         }
     
         
-        let spawnProtection = false
+        let deathCheckCooldown = false
         let enterWasPressedLastFrame = false
 
         async function startMenuLoop() {
@@ -953,14 +953,14 @@
                         menu = 1
                     } else if (menu == 1) {
                         menu = 0
-                        spawnProtection = true
+                        deathCheckCooldown = true
                         await spawnPlayer()
                         await waitUntil(() => entityJSON.playerHP[playerID] > 0)
-                        setTimeout(() => { spawnProtection = false }, 3000)
+                        setTimeout(() => {deathCheckCooldown = false}, 3000)
                     }
                 }
                 
-                if (entityJSON.playerHP && !spawnProtection && menu == 0) {
+                if (entityJSON.playerHP && !deathCheckCooldown && menu == 0) {
                     if (entityJSON.playerHP[playerID] <= 0) {
                         deathScreen = 1
                     }
