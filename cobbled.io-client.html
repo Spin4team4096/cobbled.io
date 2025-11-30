@@ -795,7 +795,7 @@
                             barPositionY = entityJSON.playerY[i][lowestFoot]+((entityJSON.playerSize[i]/2)+7)-cameraY
                             fillX = 46*0.75*(fov/360)
                             fillY = 6*0.75*(fov/360)
-                            percent = clamp(entityJSON.playerHP[i]/150, 0, 1) // change 150 to the actual max health the player can have - maybe the server needs to send this info
+                            percent = clamp(entityJSON.playerHP[i]/entityJSON.playerOriginalHP[i], 0, 1)
                             drawRect(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0)
                             drawRect(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff0d0d', '#000000', 0)
                             namePositionX = entityJSON.playerX[i][highestFoot]-cameraX
@@ -875,6 +875,7 @@
 
                 // Death Screen
                 if (deathScreen == 1) {
+                    drawRect(0, 0, screenSizeX*(fov/360), screenSizeY*(fov/360), 0, '#00000080', 0, 0)
                     drawText(0, -50*(fov/360), 20*(fov/360), '#000000', `You failed to step on a rock`, 0, 'center')
                     drawText(0, 0, 75*(fov/360), '#ff0000', `YOU DIED`, 0, 'center')
                     drawText(0, 40*(fov/360), 16*(fov/360), '#000000', `Press Enter to respawn`, 0, 'center')
@@ -888,6 +889,7 @@
                 }
                 
                 if (menu == 1) {
+                    drawRect(0, 0, screenSizeX*(fov/360), screenSizeY*(fov/360), 0, '#00000080', 0, 0)
                     let input = document.getElementById('usernameInput')
                     input.style.display = 'block'
                     
