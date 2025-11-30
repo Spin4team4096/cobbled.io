@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html>
-    <title>Cobbled.io - Client</title>
+    <title>Cobbled.io</title>
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
@@ -33,7 +33,9 @@
         // - Add achievements carousel (right half)
         // - Add settings button (top left)
         // - Play button?
-        // - SHAKE THE SCREEN WHEN TAKING DAMAGE ON A STEP idk how, maybe the server needs to send a packet telling the player to SHAKE SHAKE SHAKE
+        // - SHAKE THE SCREEN WHEN TAKING DAMAGE ON A STEP idk how, maybe the server needs to send a packet telling the player to SHAKE SHAKE SHAKE - 1, 2, SHAKE, SHAKE, 1, 2, SHAKE, SHAKE, ABAaah! eeeaaaeeeuuuaaaaiiioooouuuuueeeuuuooo... GOGOOGLEEE ITTT
+        // - Fix death screen to have a custom death msg based on what actually killed you (probably the server needs to store entityJSON.playerDeathReason for the client to use (will say the last entity name that hit the player))
+        // - Add leaderboard! client-side is enough (has XP data of every player anyway)
 
         //setup shit
         const peer = new Peer(undefined, {
