@@ -36,9 +36,7 @@
         // - Fix death screen to have a custom death msg based on what actually killed you (probably the server needs to store entityJSON.playerDeathReason for the client to use (will say the last entity name that hit the player))
         // - Add leaderboard! client-side is enough (has XP data of every player anyway)
         // - Add XP above players
-        // - Add sacntuary on minimap
-        // - Add [smth important here that i forgot]
-        // - Scale entity hp bars with fov
+        // - Add debug when pressing I - Show ping and everything
 
         //setup shit
         const peer = new Peer(undefined, {
@@ -771,12 +769,12 @@
                 if (entityJSON.boulderX) {
                     for (let i=0; i < entityJSON.boulderX.length; i++) {
                         if (entityJSON.boulderHP[i] != entityJSON.boulderOriginalHP[i]) {
-                            barX = 48*0.75*(fov/360)
-                            barY = 8*0.75*(fov/360)
+                            barX = 48*0.75
+                            barY = 8*0.75
                             barPositionX = entityJSON.boulderX[i]-cameraX
                             barPositionY = entityJSON.boulderY[i]+((entityJSON.boulderSize[i]/2)+5)-cameraY
-                            fillX = 46*0.75*(fov/360)
-                            fillY = 6*0.75*(fov/360)
+                            fillX = 46*0.75
+                            fillY = 6*0.75
                             percent = clamp(entityJSON.boulderHP[i]/entityJSON.boulderOriginalHP[i], 0, 1)
                             drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 1*(fov/360))
                             drawSquircle(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff0d0d', '#000000', 0, 1*(fov/360))
@@ -786,12 +784,12 @@
                 if (entityJSON.sanctuaryX) {
                     for (let i=0; i < entityJSON.sanctuaryX.length; i++) {
                         if (entityJSON.sanctuaryHP[i] != entityJSON.sanctuaryOriginalHP[i]) {
-                            barX = 48*0.75*(fov/360)
-                            barY = 8*0.75*(fov/360)
+                            barX = 48*0.75
+                            barY = 8*0.75
                             barPositionX = entityJSON.sanctuaryX[i]-cameraX
                             barPositionY = entityJSON.sanctuaryY[i]+((entityJSON.sanctuarySize[i]/2)+5)-cameraY
-                            fillX = 46*0.75*(fov/360)
-                            fillY = 6*0.75*(fov/360)
+                            fillX = 46*0.75
+                            fillY = 6*0.75
                             percent = clamp(entityJSON.sanctuaryHP[i]/entityJSON.sanctuaryOriginalHP[i], 0, 1)
                             drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 1*(fov/360))
                             drawSquircle(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#787878', '#000000', 0, 1*(fov/360))
@@ -801,20 +799,21 @@
                 if (entityJSON.playerX) {
                     for (let i=0; i < entityJSON.playerX.length; i++) {
                         if (entityJSON.playerHP[i] > 0) {
-                            barX = 48*0.75*(fov/360)
-                            barY = 8*0.75*(fov/360)
+                            barX = 48*0.75
+                            barY = 8*0.75
                             let lowestFoot = entityJSON.playerY[i][0] < entityJSON.playerY[i][1] ? 1 : 0
                             let highestFoot = entityJSON.playerY[i][0] < entityJSON.playerY[i][1] ? 0 : 1
                             barPositionX = entityJSON.playerX[i][lowestFoot]-cameraX
                             barPositionY = entityJSON.playerY[i][lowestFoot]+((entityJSON.playerSize[i]/2)+7)-cameraY
-                            fillX = 46*0.75*(fov/360)
-                            fillY = 6*0.75*(fov/360)
+                            fillX = 46*0.75
+                            fillY = 6*0.75
                             percent = clamp(entityJSON.playerHP[i]/entityJSON.playerOriginalHP[i], 0, 1)
                             drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 1*(fov/360))
                             drawSquircle(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff0d0d', '#000000', 0, 1*(fov/360))
                             namePositionX = entityJSON.playerX[i][highestFoot]-cameraX
                             namePositionY = entityJSON.playerY[i][highestFoot]-((entityJSON.playerSize[i]/2)+7)-cameraY
-                            drawText(namePositionX, namePositionY, 8*(fov/360), '#000000', `${entityJSON.playerUsername ? entityJSON.playerUsername[i] : 'unknown??? REPORT THIS BUG'}`, 0, 'center')
+                            drawText(namePositionX, namePositionY-6, 8, '#000000', `${entityJSON.playerUsername ? entityJSON.playerUsername[i] : 'unknown name??? BUG'}`, 0, 'center')
+                            drawText(namePositionX, namePositionY, 6, '#000000', `${entityJSON.playerXP ? entityJSON.playerXP[i] : 'unknown xp??? BUG'} XP`, 0, 'center')
                         }
                     }
                 }
@@ -851,9 +850,15 @@
                 let minimapPositionY = screenSizeY/2-(minimapSizeY/2)
                 let playerMapX = minimapPositionX+((playerX[otherFoot]+playerX[activeFoot])/2)/((serverJSON.borderSize)/(minimapSizeX/2))
                 let playerMapY = minimapPositionY+((playerY[otherFoot]+playerY[activeFoot])/2)/((serverJSON.borderSize)/(minimapSizeY/2))
-                let arrowSize = 2.5*(fov/360)
                 drawSquircle(minimapPositionX, minimapPositionY, minimapSizeX, minimapSizeY, 0, '#82828240', '#c2c2c240', 2, 2*(fov/360))
-                drawShape(playerMapX, playerMapY, arrowSize, 3, playerDirection[activeFoot], '#000000', 'ff00ff', 0)
+                drawShape(playerMapX, playerMapY, 2.5*(fov/360), 3, playerDirection[activeFoot], '#000000', 'ff00ff', 0)
+                if (entityJSON.sanctuaryX) {
+                    for (let i=0; i < entityJSON.sanctuaryX.length; i++) {
+                        playerMapX = minimapPositionX+(entityJSON.sanctuaryX[i])/((serverJSON.borderSize)/(minimapSizeX/2))
+                        playerMapY = minimapPositionY+(entityJSON.sanctuaryY[i])/((serverJSON.borderSize)/(minimapSizeY/2))
+                        drawShape(playerMapX, playerMapY, 2.5*(fov/360), 100, playerDirection[activeFoot], '#78787833', 'ff00ff', 0)
+                    }
+                }
 
                 let totalUpgradePoints = Object.values(stats).reduce((sum, val) => sum + val, 0)
                 let upgradePoints = upgradePointsPerLevel[playerJSON.level] - totalUpgradePoints
