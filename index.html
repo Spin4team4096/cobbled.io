@@ -941,31 +941,26 @@
             setInterval(async () => {
                 if (!running) return
 
-                let enterPressed = isKeyPressed('Enter')
-                
-                if (menu == 0 && deathScreen == 0 && playerID >= 0 && entityJSON.playerHP && entityJSON.playerHP[playerID] <= 0) {
-                    deathScreen = 1
-                    menu = 0
-                }
-                
-                if (enterPressed && !enterWasPressed) {
-                    if (menu == 1) {
-                        menu = 0
-                        await spawnPlayer()
-                    } else if (deathScreen == 1) {
+                if (isKeyPressed('Enter')) {
+                    await waitUntil(() => !isKeyPressed('Enter'))
+                    if (deathScreen == 1) {
                         deathScreen = 0
                         menu = 1
+                    } else if (menu == 1) {
+                        menu = 0
+                        await spawnPlayer()
+                        await waitUntil(() => entityJSON.playerHP[playerID] > 0)
                     }
                 }
-
-                if (deathScreen == 1 && entityJSON.playerHP[playerID] > 0 && entityJSON.playerHP) {
+                
+                if (entityJSON.playerHP[playerID] <= 0) {
+                    deathScreen = 1
+                }
+                if (menu == 1) {
                     deathScreen = 0
                 }
-
-                enterWasPressed = enterPressed
-
                 
-            }, 33.33)
+            }, 1133.33)
         }
 
     </script>
