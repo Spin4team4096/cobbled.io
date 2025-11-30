@@ -33,6 +33,7 @@
         // - Add achievements carousel (right half)
         // - Add settings button (top left)
         // - Play button?
+        // - SHAKE THE SCREEN WHEN TAKING DAMAGE ON A STEP idk how, maybe the server needs to send a packet telling the player to SHAKE SHAKE SHAKE
 
         //setup shit
         const peer = new Peer(undefined, {
@@ -442,6 +443,8 @@
         let cameraTargetY = 0
         let cameraSpeed = 0
         let playerID = -1
+        percentHP = 0
+        percentXP = 0
         lastNotificationID = null
         menu = 1
         deathScreen = 0
@@ -817,9 +820,10 @@
                 barPositionY = screenSizeY/2-(barY/2)
                 fillX = 46*3*(fov/360)
                 fillY = 6*3*(fov/360)
-                percent = clamp(playerHP/(150+(playerJSON.level*6)+(stats.maxHealth*60)), 0.015, 1)
+                targetPercentHP = clamp(playerHP/(150+(playerJSON.level*6)+(stats.maxHealth*60)), 0.015, 1)
+                percentHP += (targetPercentHP-percentHP)*0.2
                 drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 2*(fov/360))
-                drawSquircle(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff0d0d', '#000000', 0, 2*(fov/360))
+                drawSquircle(barPositionX-(fillX/2)*(1-percentHP), barPositionY, fillX*percentHP, fillY, 0, '#ff0d0d', '#000000', 0, 2*(fov/360))
                 drawText(barPositionX, barPositionY, 10*(fov/360), '#ffffff', `${Math.floor(playerHP*100)/100} HP`, 0, 'center')
 
                 barX = 48*2*(fov/360)
@@ -828,10 +832,11 @@
                 barPositionY = screenSizeY/2-(barY/2)-((7*3*(fov/360)))
                 fillX = 46*2*(fov/360)
                 fillY = 6*2*(fov/360)
-                percent = clamp((playerXP-xpPerLevel[playerJSON.level])/(xpPerLevel[playerJSON.level]-xpPerLevel[playerJSON.level-1]), 0.02, 0.98)
-                if (playerJSON.level == 0) {percent = playerXP == 0 ? 0.02 : clamp(playerXP/xpPerLevel[1], 0.02, 0.98)}
+                targetPercentXP = clamp((playerXP-xpPerLevel[playerJSON.level])/(xpPerLevel[playerJSON.level]-xpPerLevel[playerJSON.level-1]), 0.02, 0.98)
+                percentXP += (targetPercentXP-percentXP)*0.1
+                if (playerJSON.level == 0) {percentXP = playerXP == 0 ? 0.02 : clamp(playerXP/xpPerLevel[1], 0.02, 0.98)}
                 drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 2*(fov/360))
-                drawSquircle(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff5d0d', '#000000', 0, 2*(fov/360))
+                drawSquircle(barPositionX-(fillX/2)*(1-percentXP), barPositionY, fillX*percentXP, fillY, 0, '#ff5d0d', '#000000', 0, 2*(fov/360))
                 drawText(barPositionX, barPositionY, 10*(fov/360), '#ffffff', `Level ${playerJSON.level} - ${Math.floor(playerXP)} XP`, 0, 'center')
 
                 let minimapSizeX = 70*(fov/360)
