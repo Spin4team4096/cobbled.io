@@ -30,8 +30,9 @@
         // - Add "report an issue" button (under "press enter")
         // - Add Discord button (bottom left)
         // - Add achievements carousel (right half)
-        // - Add settings button (top left)
+        // - Add settings button (top left) - UI scale setting only (for now)
         // - Play button?
+        // - Question button, which guides the player how to play the game
         // - SHAKE THE SCREEN WHEN TAKING DAMAGE ON A STEP idk how, maybe the server needs to send a packet telling the player to SHAKE SHAKE SHAKE - 1, 2, SHAKE, SHAKE, 1, 2, SHAKE, SHAKE, ABAaah! eeeaaaeeeuuuaaaaiiioooouuuuueeeuuuooo... GOGOOGLEEE ITTT
         // - Fix death screen to have a custom death msg based on what actually killed you (probably the server needs to store entityJSON.playerDeathReason for the client to use (will say the last entity name that hit the player))
         // - Add debug when pressing I - Show ping and everything
@@ -840,16 +841,28 @@
                     }
                     if (entityJSON.sanctuaryX) {
                         for (let i=0; i < entityJSON.sanctuaryX.length; i++) {
-                            if (entityJSON.sanctuaryHP[i] != entityJSON.sanctuaryOriginalHP[i]) {
-                                barX = 48*0.75
-                                barY = 8*0.75
-                                barPositionX = entityJSON.sanctuaryX[i]-cameraX
-                                barPositionY = entityJSON.sanctuaryY[i]+((entityJSON.sanctuarySize[i]/2)+5)-cameraY
-                                fillX = 46*0.75
-                                fillY = 6*0.75
-                                percent = clamp(entityJSON.sanctuaryHP[i]/entityJSON.sanctuaryOriginalHP[i], 0, 1)
+                            barX = 48*0.75
+                            barY = 8*0.75
+                            barPositionX = entityJSON.sanctuaryX[i]-cameraX
+                            barPositionY = entityJSON.sanctuaryY[i]+((entityJSON.sanctuarySize[i]/2)+5)-cameraY
+                            fillX = 46*0.75
+                            fillY = 6*0.75
+                            percent = clamp(entityJSON.sanctuaryHP[i]/entityJSON.sanctuaryOriginalHP[i], 0, 1)
+                            drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 1*(fov/360))
+                            drawSquircle(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#787878', '#000000', 0, 1*(fov/360))
+                            drawText(barPositionX, barPositionY, 4, '#ffffff', `AFK time left`, 0, 'center')
+
+                            barX = 48*0.75
+                            barY = 8*0.75
+                            barPositionX = entityJSON.sanctuaryX[i]-cameraX
+                            barPositionY = entityJSON.sanctuaryY[i]+((entityJSON.sanctuarySize[i]/2)+5+(barY)*1.1)-cameraY
+                            fillX = 46*0.75
+                            fillY = 6*0.75
+                            percent = clamp(entityJSON.sanctuaryRespawnHP[i]/entityJSON.sanctuaryOriginalRespawnHP[i], 0, 1)
+                            if (percent > 0) {
                                 drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 1*(fov/360))
-                                drawSquircle(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#787878', '#000000', 0, 1*(fov/360))
+                                drawSquircle(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ffdb00', '#000000', 0, 1*(fov/360))
+                                drawText(barPositionX, barPositionY, 4, '#ffffff', `respawning...`, 0, 'center')
                             }
                         }
                     }
