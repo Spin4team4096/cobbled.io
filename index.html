@@ -197,7 +197,14 @@
             // pick the first server bc what else will i do bro
             // in the future do ping tests and pick the best one ig
             serverList = await getKey('cobbled_serverList')
-            serverName = serverList[1]
+            serverList = Array.isArray(serverList) ? serverList : JSON.parse(serverList || '[]')
+            if (!serverList || !Array.isArray(serverList) || serverList.length < 1) {
+                disconnectReason = 'The servers are offline'
+                disconnectWasFromServer = false
+                disconnectAction = 'You can ping @Spin4team4096 on Discord to request the server be turned on!\n(and maybe even play with the dev :P)'
+                return
+            }
+            serverName = serverList[0]
             serverJSON = await getKey(`${serverName}_config`)
             serverJSON = JSON.parse(serverJSON)
             serverULID = await getKey(`${serverName}_ULID`)
@@ -208,12 +215,14 @@
         function connectToServer(serverULID) {
             disconnectReason = 'none'
             disconnectWasFromServer = false
+            disconnectAction = 'Press enter or try a different server.'
             conn = peer.connect(serverULID)
 
             peer.on('error', (err) => {
                 console.log('Peer connection error:', err)
                 disconnectReason = 'Failed to connect to server'
                 disconnectWasFromServer = false
+                disconnectAction = 'Press enter or try a different server.'
             })
             
             conn.on('open', () => {
@@ -235,6 +244,7 @@
                             playerID = -1
                             disconnectReason = serverPackage
                             disconnectWasFromServer = true
+                            disconnectAction = 'Press enter or try a different server.'
                         }
                     }
                 } catch (err) {
@@ -246,6 +256,7 @@
                 console.log('Connection error:', err)
                 disconnectReason = 'Disconnected from server'
                 disconnectWasFromServer = false
+                disconnectAction = 'Press enter or try a different server.'
             })
         }
 
@@ -354,15 +365,31 @@
             ctx.restore()
         }
 
-        function drawText(x, y, size, color, text, dir = 0, align = 'center', font = 'Arial') {
+        function drawText(x, y, size, color, text, dir = 0, align = 'center', newlineMode = 'center', font = 'Arial', lineHeight = 1.2) {
             ctx.save()
             ctx.fillStyle = color
             ctx.font = `${size}px ${font}`
             ctx.textAlign = align
-            ctx.textBaseline = 'middle'
             ctx.translate(x, y)
             ctx.rotate(degToRad(dir))
-            ctx.fillText(text, 0, 0)
+            
+            const lines = text.split('\n')
+            const lineHeightPx = size * lineHeight
+            
+            if (newlineMode === 'stacked') {
+                ctx.textBaseline = 'top'
+                for (let i = 0; i < lines.length; i++) {
+                    const lineY = i * lineHeightPx
+                    ctx.fillText(lines[i], 0, lineY)
+                }
+            } else {
+                ctx.textBaseline = 'middle'
+                for (let i = 0; i < lines.length; i++) {
+                    const lineY = (i - (lines.length - 1) / 2) * lineHeightPx
+                    ctx.fillText(lines[i], 0, lineY)
+                }
+            }
+            
             ctx.restore()
         }
 
@@ -469,6 +496,7 @@
         deathScreen = 0
         disconnectReason = 'none'
         disconnectWasFromServer = false
+        disconnectAction = 'Press enter or try a different server.'
         resize()
         let running = true
         startClientLoop()
@@ -981,18 +1009,19 @@
                     if (playerID >= 0) {
                         drawRect(0, 0, screenSizeX*(fov/360), screenSizeY*(fov/360), 0, '#00000080', 0, 0)
                         drawText(0, -22*(fov/360), 16*(fov/360), '#000000', `Connected!`, 0, 'center')
-                        drawText(0, 22*(fov/360), 16*(fov/360), '#000000', `Press Enter to play!`, 0, 'center')
+                        drawText(0, 22*(fov/360), 12*(fov/360), '#000000', `Press Enter to play!`, 0, 'center')
                     } else if (disconnectReason == 'none') {
                         drawRect(0, 0, screenSizeX*(fov/360), screenSizeY*(fov/360), 0, '#00000080', 0, 0)
                         drawText(0, -22*(fov/360), 16*(fov/360), '#000000', `Connecting...`, 0, 'center')
                     } else if (disconnectWasFromServer == false) {
                         drawRect(0, 0, screenSizeX*(fov/360), screenSizeY*(fov/360), 0, '#ffdb0080', 0, 0)
                         drawText(0, -22*(fov/360), 16*(fov/360), '#000000', `Failed to connect to server...`, 0, 'center')
-                        drawText(0, 22*(fov/360), 16*(fov/360), '#000000', `${disconnectReason}`, 0, 'center')
+                        drawText(0, 22*(fov/360), 12*(fov/360), '#000000', `${disconnectReason}`, 0, 'center')
+                        drawText(0, 32*(fov/360), 8*(fov/360), '#000000', `${disconnectAction}`, 0, 'center', 'stacked')
                     } else if (disconnectWasFromServer == true) {
                         drawRect(0, 0, screenSizeX*(fov/360), screenSizeY*(fov/360), 0, '#62000080', 0, 0)
-                        drawText(0, -22*(fov/360), 16*(fov/360), '#000000', `Disconnected!`, 0, 'center')
-                        drawText(0, 22*(fov/360), 16*(fov/360), '#000000', `${disconnectReason}`, 0, 'center')
+                        drawText(0, -22*(fov/360), 12*(fov/360), '#000000', `Disconnected!`, 0, 'center')
+                        drawText(0, 22*(fov/360), 8*(fov/360), '#000000', `${disconnectReason}`, 0, 'center')
                     }
                     
                     username = input.value || 'unnamed'
