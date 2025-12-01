@@ -22,7 +22,7 @@
     <script>
         // TODO: (Apart from whatever is already in the comments)
         // - Make Crimson boulders have a red haze thing, and text on it
-        // - Add local notification "Don't forget to step on a rock!" or "You killed [player]"
+        // - Add kill notifications "You killed [player]"
         // - Add controller support
         // - Add mobile controls
         // - Add boulder & rock variation (6-8 sides)
@@ -584,6 +584,12 @@
                     }
 
                     // notifications
+                    if (entityJSON.playerFrozen[playerID] == 1 && playerID >= 0) {
+                        notifications.text.push(`Upgrade your stats before you spawn!`)
+                        notifications.color.push('#000000')
+                        notifications.timer.push(2)
+                    }
+
                     if (lastNotificationID != entityJSON.serverNotification.id && lastNotificationID != null) {
                         notifications.text.push(entityJSON.serverNotification.text)
                         notifications.color.push(entityJSON.serverNotification.color)
@@ -1067,6 +1073,9 @@
                             menu = 0
                             deathCheckCooldown = true
                             await spawnPlayer()
+                            notifications.text.push(`You must step on small rocks to surive!`)
+                            notifications.color.push('#000000')
+                            notifications.timer.push(30*7)
                             await waitUntil(() => entityJSON.playerHP[playerID] > 0)
                             setTimeout(() => {deathCheckCooldown = false}, 3000)
                         }
