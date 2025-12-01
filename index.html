@@ -202,11 +202,19 @@
             serverJSON = JSON.parse(serverJSON)
             serverULID = await getKey(`${serverName}_ULID`)
             connectToServer(serverULID)
-            console.log(`list: ${serverList} name: ${serverName} json: ${JSON.stringify(serverJSON)} ulid: ${serverULID}`)
+            console.log(`Found server! list: ${serverList} name: ${serverName} json: ${JSON.stringify(serverJSON)} ulid: ${serverULID}`)
         }
 
         function connectToServer(serverULID) {
+            disconnectReason = 'none'
+            disconnectWasFromServer = false
             conn = peer.connect(serverULID)
+
+            peer.on('error', (err) => {
+                console.log('Peer connection error:', err)
+                disconnectReason = 'Failed to connect to server'
+                disconnectWasFromServer = false
+            })
             
             conn.on('open', () => {
                 cameraTargetX = randomInt(-serverJSON.borderSize, serverJSON.borderSize)
@@ -223,6 +231,10 @@
                             entityJSON = entityData
                             playerID = serverPackage.ID
                             stats = serverPackage.stats
+                        } else if (type === 'disconnect') {
+                            playerID = -1
+                            disconnectReason = serverPackage
+                            disconnectWasFromServer = true
                         }
                     }
                 } catch (err) {
@@ -232,6 +244,8 @@
             
             conn.on('error', (err) => {
                 console.log('Connection error:', err)
+                disconnectReason = 'Disconnected from server'
+                disconnectWasFromServer = false
             })
         }
 
@@ -446,12 +460,15 @@
         let cameraTargetY = 0
         let cameraSpeed = 0
         let playerID = -1
+        fov = 360
         showLeaderboard = true
         percentHP = 0
         percentXP = 0
         lastNotificationID = null
         menu = 1
         deathScreen = 0
+        disconnectReason = 'none'
+        disconnectWasFromServer = false
         resize()
         let running = true
         startClientLoop()
@@ -459,102 +476,107 @@
 
         function startClientLoop() {
             setInterval(() => {
-                if (!running || playerID < 0) return
+                if (!running) return
+                // if (playerID >= 0) is used in a lot of places as a way to determine if the player is connected to the server.
+                // a lotta stuff shouldn't even try to render or calculate before they connect.
+                // But some stuff (like menus) should still render before connecting.
+                if (playerID >= 0) {
+                    playerX = entityJSON.playerX[playerID]
+                    playerY = entityJSON.playerY[playerID]
+                    playerHP = entityJSON.playerHP[playerID]
+                    playerXP = entityJSON.playerXP[playerID]
+                    playerDirection = entityJSON.playerDirection[playerID]
+                    playerHeight = entityJSON.playerHeight[playerID]
+                    playerSize = entityJSON.playerSize[playerID]
 
-                playerX = entityJSON.playerX[playerID]
-                playerY = entityJSON.playerY[playerID]
-                playerHP = entityJSON.playerHP[playerID]
-                playerXP = entityJSON.playerXP[playerID]
-                playerDirection = entityJSON.playerDirection[playerID]
-                playerHeight = entityJSON.playerHeight[playerID]
-                playerSize = entityJSON.playerSize[playerID]
-
-                for (let l=0; l < xpPerLevel.length; l++) {
-                    if (entityJSON.playerXP[playerID] > xpPerLevel[l]) {
-                        playerJSON.level = l
+                    for (let l=0; l < xpPerLevel.length; l++) {
+                        if (entityJSON.playerXP[playerID] > xpPerLevel[l]) {
+                            playerJSON.level = l
+                        }
                     }
-                }
 
-                if (isKeyPressed('a') || isKeyPressed('A')) {
-                    playerJSON.stopped = 1
-                } else {
-                    playerJSON.stopped = 0
-                }
-                playerJSON.mode = 0
-                if (leftMouseDown || isKeyPressed('Control')) {playerJSON.mode = 1}
-                if (rightMouseDown || isKeyPressed('Shift')) {playerJSON.mode = -1}
-
-                switch (playerJSON.mode) {
-                    case -1: playerModeSpeedMultiplier = 0.75
-                    case 0: playerModeSpeedMultiplier = 1
-                    case 1: playerModeSpeedMultiplier = 1.5
-                }
-
-                stepReach = 50+(stats.stepReach*5)
-                fov = 360*(1+(stats.fieldOfView/20))
-
-                if (entityJSON.playerHeight[playerID][0] < entityJSON.playerHeight[playerID][1]) {
-                    activeFoot = 1
-                    otherFoot = 0
-                } else {
-                    activeFoot = 0
-                    otherFoot = 1
-                }
-
-                // main
-
-                if (playerID >= 0 && menu == 0) {
-                    cameraX += (playerX[otherFoot]-cameraX)/5
-                    cameraY += (playerY[otherFoot]-cameraY)/5
-                }
-
-                if (menu == 1) {
-                    if (cameraSpeed < 0.5) {
-                        cameraSpeed += 0.005
-                        cameraX += cameraSpeed*Math.cos(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
-                        cameraY += cameraSpeed*Math.sin(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
-                    } else if (distanceTo(cameraTargetX, cameraTargetY, cameraX, cameraY) > 50) {
-                        cameraX += 0.5*Math.cos(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
-                        cameraY += 0.5*Math.sin(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
-                    } else if (distanceTo(cameraTargetX, cameraTargetY, cameraX, cameraY) > 10) {
-                        cameraX += (distanceTo(cameraTargetX, cameraTargetY, cameraX, cameraY)/100)*Math.cos(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
-                        cameraY += (distanceTo(cameraTargetX, cameraTargetY, cameraX, cameraY)/100)*Math.sin(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
+                    if (isKeyPressed('a') || isKeyPressed('A')) {
+                        playerJSON.stopped = 1
                     } else {
-                        cameraSpeed = 0
-                        cameraTargetX = randomInt(-serverJSON.borderSize, serverJSON.borderSize)
-                        cameraTargetY = randomInt(-serverJSON.borderSize, serverJSON.borderSize)
+                        playerJSON.stopped = 0
                     }
+                    playerJSON.mode = 0
+                    if (leftMouseDown || isKeyPressed('Control')) {playerJSON.mode = 1}
+                    if (rightMouseDown || isKeyPressed('Shift')) {playerJSON.mode = -1}
+
+                    switch (playerJSON.mode) {
+                        case -1: playerModeSpeedMultiplier = 0.75
+                        case 0: playerModeSpeedMultiplier = 1
+                        case 1: playerModeSpeedMultiplier = 1.5
+                    }
+
+                    stepReach = 50+(stats.stepReach*5)
+                    fov = 360*(1+(stats.fieldOfView/20))
+
+                    if (entityJSON.playerHeight[playerID][0] < entityJSON.playerHeight[playerID][1]) {
+                        activeFoot = 1
+                        otherFoot = 0
+                    } else {
+                        activeFoot = 0
+                        otherFoot = 1
+                    }
+
+                    // main
+
+                    if (playerID >= 0 && menu == 0) {
+                        cameraX += (playerX[otherFoot]-cameraX)/5
+                        cameraY += (playerY[otherFoot]-cameraY)/5
+                    }
+
+                    if (menu == 1) {
+                        if (cameraSpeed < 0.5) {
+                            cameraSpeed += 0.005
+                            cameraX += cameraSpeed*Math.cos(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
+                            cameraY += cameraSpeed*Math.sin(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
+                        } else if (distanceTo(cameraTargetX, cameraTargetY, cameraX, cameraY) > 50) {
+                            cameraX += 0.5*Math.cos(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
+                            cameraY += 0.5*Math.sin(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
+                        } else if (distanceTo(cameraTargetX, cameraTargetY, cameraX, cameraY) > 10) {
+                            cameraX += (distanceTo(cameraTargetX, cameraTargetY, cameraX, cameraY)/100)*Math.cos(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
+                            cameraY += (distanceTo(cameraTargetX, cameraTargetY, cameraX, cameraY)/100)*Math.sin(degToRad(directionTo(cameraTargetX, cameraTargetY, cameraX, cameraY)))
+                        } else {
+                            cameraSpeed = 0
+                            cameraTargetX = randomInt(-serverJSON.borderSize, serverJSON.borderSize)
+                            cameraTargetY = randomInt(-serverJSON.borderSize, serverJSON.borderSize)
+                        }
+                    }
+
+                    // upgrading stats
+                    playerJSON.upgradeKey = -1
+                    for (let i = 1; i <= 10; i++) {
+                        const key = i === 10 ? '0' : i.toString()
+                        if (isKeyPressed(key)) {
+                            playerJSON.upgradeKey = i
+                        }
+                    }
+
+                    // notifications
+                    if (lastNotificationID != entityJSON.serverNotification.id && lastNotificationID != null) {
+                        notifications.text.push(entityJSON.serverNotification.text)
+                        notifications.color.push(entityJSON.serverNotification.color)
+                        notifications.timer.push(30*7)
+                    }
+                    for (let i=0; i < notifications.text.length; i++) {
+                        notifications.timer[i] -= 1
+                        if (notifications.timer[i] <= 0) {
+                            notifications.text.splice(i, 1)
+                            notifications.color.splice(i, 1)
+                            notifications.timer.splice(i, 1)
+                            i--
+                        }
+                    }
+                    lastNotificationID = entityJSON.serverNotification.id
                 }
+                
 
                 scale = Math.max(canvas.width / (fov * 16/9), canvas.height / fov)
                 let worldMouseX = (mouseX/scale) + cameraX
                 let worldMouseY = (mouseY/scale) + cameraY
-
-                // upgrading stats
-                playerJSON.upgradeKey = -1
-                for (let i = 1; i <= 10; i++) {
-                    const key = i === 10 ? '0' : i.toString()
-                    if (isKeyPressed(key)) {
-                        playerJSON.upgradeKey = i
-                    }
-                }
-
-                // notifications
-                if (lastNotificationID != entityJSON.serverNotification.id && lastNotificationID != null) {
-                    notifications.text.push(entityJSON.serverNotification.text)
-                    notifications.color.push(entityJSON.serverNotification.color)
-                    notifications.timer.push(30*7)
-                }
-                for (let i=0; i < notifications.text.length; i++) {
-                    notifications.timer[i] -= 1
-                    if (notifications.timer[i] <= 0) {
-                        notifications.text.splice(i, 1)
-                        notifications.color.splice(i, 1)
-                        notifications.timer.splice(i, 1)
-                        i--
-                    }
-                }
-                lastNotificationID = entityJSON.serverNotification.id
                 
                 // render shit
                 ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -566,372 +588,375 @@
                 let screenSizeX = (canvas.width/scale)
                 let screenSizeY = (canvas.height/scale)
                 
-                // Grid
-                let gridSize = 10
-                ctx.fillStyle = '#f7f8ff'
-                ctx.fillRect(-screenSizeX/2, -screenSizeY/2, screenSizeX, screenSizeY)
-                ctx.strokeStyle = '#f1f1f6'
-                ctx.lineWidth = 1
-                
-                for (let x = Math.floor((-screenSizeX/2 + cameraX) / gridSize) * gridSize; x < screenSizeX/2 + cameraX; x += gridSize) {
-                    let screenX = x - cameraX
-                    ctx.beginPath()
-                    ctx.moveTo(screenX, -screenSizeY/2)
-                    ctx.lineTo(screenX, screenSizeY/2)
-                    ctx.stroke()
-                }
-
-                for (let y = Math.floor((-screenSizeY/2 + cameraY) / gridSize) * gridSize; y < screenSizeY/2 + cameraY; y += gridSize) {
-                    let screenY = y - cameraY
-                    ctx.beginPath()
-                    ctx.moveTo(-screenSizeX/2, screenY)
-                    ctx.lineTo(screenSizeX/2, screenY)
-                    ctx.stroke()
-                }
-
-                let darknessColor = '#00000026'
-                let leftWorldEdge = -serverJSON.borderSize-cameraX
-                let rightWorldEdge = serverJSON.borderSize-cameraX
-                let topWorldEdge = -serverJSON.borderSize-cameraY
-                let bottomWorldEdge = serverJSON.borderSize-cameraY
-
-                if (leftWorldEdge > -screenSizeX/2) {
-                    let width = leftWorldEdge-(-screenSizeX/2)
-                    drawRect(-screenSizeX/2+width/2, 0, width, screenSizeY, 0, darknessColor, '', 0)
-                }
-                if (rightWorldEdge < screenSizeX/2) {
-                    let width = screenSizeX/2-rightWorldEdge
-                    drawRect(screenSizeX/2-width/2, 0, width, screenSizeY, 0, darknessColor, '', 0)
-                }
-                if (topWorldEdge > -screenSizeY/2) {
-                    let height = topWorldEdge-(-screenSizeY/2)
-                    let xStart = Math.max(-screenSizeX/2, leftWorldEdge)
-                    let xEnd = Math.min(screenSizeX/2, rightWorldEdge)
-                    let width = xEnd-xStart
-                    if (width > 0) {
-                        drawRect((xStart+xEnd)/2, -screenSizeY/2+height/2, width, height, 0, darknessColor, '', 0)
+                if (playerID >= 0) {
+                    // Grid
+                    let gridSize = 10
+                    ctx.fillStyle = '#f7f8ff'
+                    ctx.fillRect(-screenSizeX/2, -screenSizeY/2, screenSizeX, screenSizeY)
+                    ctx.strokeStyle = '#f1f1f6'
+                    ctx.lineWidth = 1
+                    
+                    for (let x = Math.floor((-screenSizeX/2 + cameraX) / gridSize) * gridSize; x < screenSizeX/2 + cameraX; x += gridSize) {
+                        let screenX = x - cameraX
+                        ctx.beginPath()
+                        ctx.moveTo(screenX, -screenSizeY/2)
+                        ctx.lineTo(screenX, screenSizeY/2)
+                        ctx.stroke()
                     }
-                }
-                if (bottomWorldEdge < screenSizeY/2) {
-                    let height = screenSizeY/2-bottomWorldEdge
-                    let xStart = Math.max(-screenSizeX/2, leftWorldEdge)
-                    let xEnd = Math.min(screenSizeX/2, rightWorldEdge)
-                    let width = xEnd-xStart
-                    if (width > 0) {
-                        drawRect((xStart+xEnd)/2, screenSizeY/2-height/2, width, height, 0, darknessColor, '', 0)
-                    }
-                }
 
-                // Entities - no: en titties :P
-                if (entityJSON.rockX) {
-                    for (let i=0; i < entityJSON.rockX.length; i++) {
-                        if (entityJSON.rockDuplicated[i] == 1) {
-                            drawShape(entityJSON.rockX[i]-cameraX, entityJSON.rockY[i]-cameraY, 7, 7, i, '#777777', '#606060', 2)
-                            drawShape(entityJSON.rockX[i]+(Math.cos(degToRad(entityJSON.rockDirection[i]))*5)-cameraX, entityJSON.rockY[i]+(Math.sin(degToRad(entityJSON.rockDirection[i]))*5)-cameraY, 7, 7, i, '#777777', '#606060', 2)
-                        } else {
-                            drawShape(entityJSON.rockX[i]-cameraX, entityJSON.rockY[i]-cameraY, 7, 7, i, '#777777', '#606060', 2)
+                    for (let y = Math.floor((-screenSizeY/2 + cameraY) / gridSize) * gridSize; y < screenSizeY/2 + cameraY; y += gridSize) {
+                        let screenY = y - cameraY
+                        ctx.beginPath()
+                        ctx.moveTo(-screenSizeX/2, screenY)
+                        ctx.lineTo(screenSizeX/2, screenY)
+                        ctx.stroke()
+                    }
+
+                    let darknessColor = '#00000026'
+                    let leftWorldEdge = -serverJSON.borderSize-cameraX
+                    let rightWorldEdge = serverJSON.borderSize-cameraX
+                    let topWorldEdge = -serverJSON.borderSize-cameraY
+                    let bottomWorldEdge = serverJSON.borderSize-cameraY
+
+                    if (leftWorldEdge > -screenSizeX/2) {
+                        let width = leftWorldEdge-(-screenSizeX/2)
+                        drawRect(-screenSizeX/2+width/2, 0, width, screenSizeY, 0, darknessColor, '', 0)
+                    }
+                    if (rightWorldEdge < screenSizeX/2) {
+                        let width = screenSizeX/2-rightWorldEdge
+                        drawRect(screenSizeX/2-width/2, 0, width, screenSizeY, 0, darknessColor, '', 0)
+                    }
+                    if (topWorldEdge > -screenSizeY/2) {
+                        let height = topWorldEdge-(-screenSizeY/2)
+                        let xStart = Math.max(-screenSizeX/2, leftWorldEdge)
+                        let xEnd = Math.min(screenSizeX/2, rightWorldEdge)
+                        let width = xEnd-xStart
+                        if (width > 0) {
+                            drawRect((xStart+xEnd)/2, -screenSizeY/2+height/2, width, height, 0, darknessColor, '', 0)
                         }
                     }
-                }
-
-                if (entityJSON.boulderX) {
-                    for (let i=0; i < entityJSON.boulderX.length; i++) {
-                        if (entityJSON.boulderSpawnCondition[i] == 1) {
-                            switch (entityJSON.boulderRarity[i]) {
-                                case 0: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#777777', '#606060', 4); break
-                                case 1: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#f2f2f2', '#cccccc', 4); break
-                                case 2: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ffbf00', '#d9a300', 4); break
-                                case 3: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#58f5db', '#49ccb6', 4); break
-                                case 4: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ff3333', '#d90000', 4); break
-                            }
-                        } else if (entityJSON.boulderSpawnCondition[i] == 2) {
-                            switch (entityJSON.boulderRarity[i]) {
-                                case 0: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#777777', '#606060', 8); break
-                                case 1: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#f2f2f2', '#cccccc', 8); break
-                                case 2: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ffbf00', '#d9a300', 8); break
-                                case 3: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#58f5db', '#49ccb6', 8); break
-                                case 4: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ff3333', '#d90000', 8); break
-                            }
+                    if (bottomWorldEdge < screenSizeY/2) {
+                        let height = screenSizeY/2-bottomWorldEdge
+                        let xStart = Math.max(-screenSizeX/2, leftWorldEdge)
+                        let xEnd = Math.min(screenSizeX/2, rightWorldEdge)
+                        let width = xEnd-xStart
+                        if (width > 0) {
+                            drawRect((xStart+xEnd)/2, screenSizeY/2-height/2, width, height, 0, darknessColor, '', 0)
                         }
                     }
-                }
 
-                if (entityJSON.sanctuaryX) {
-                    for (let i=0; i < entityJSON.sanctuaryX.length; i++) {
-                        drawCircle(entityJSON.sanctuaryX[i]-cameraX, entityJSON.sanctuaryY[i]-cameraY, entityJSON.sanctuarySize[i]/2, i, '#78787833', '#ff0000', 0)
-                    }
-                }
-
-                if (entityJSON.playerX) {
-                    for (let i=0; i < entityJSON.playerX.length; i++) {
-                        if (entityJSON.playerHP[i] > 0) {
-                            if (i == playerID) {
-                                const arrowSize1 = (playerSize*((100+(playerHeight[0]/1.5))/100))/3
-                                const arrowSize2 = (playerSize*((100+(playerHeight[1]/1.5))/100))/3
-                                if (entityJSON.playerHeight[i][0] < entityJSON.playerHeight[i][1]) {
-                                    drawRect((playerX[0] + playerX[1])/2 - cameraX, (playerY[0] + playerY[1])/2 - cameraY, distanceTo(playerX[1], playerY[1], playerX[0], playerY[0]), 8, directionTo(playerX[1], playerY[1], playerX[0], playerY[0]), '#ff2626', '#bf1d1d', 1)
-                                    
-                                    drawCircle(playerX[0]-cameraX, playerY[0]-cameraY, (playerSize*((100+(playerHeight[0]/1.5))/100))/2, playerDirection[0], '#ff2626', '#bf1d1d', 2)
-                                    drawRect(playerX[0]-cameraX-Math.cos(degToRad(playerDirection[0]))*((playerSize*((100+(playerHeight[0]/1.5))/100))/4 + (playerSize*((100+(playerHeight[0]/1.5))/100))*-0.2), playerY[0]-cameraY-Math.sin(degToRad(playerDirection[0]))*((playerSize*((100+(playerHeight[0]/1.5))/100))/4 + (playerSize*((100+(playerHeight[0]/1.5))/100))*-0.2), (playerSize*((100+(playerHeight[0]/1.5))/100))/2, (playerSize*((100+(playerHeight[0]/1.5))/100))/4, playerDirection[0], '#bf1d1d', '#ff00ff', 0)
-                                    const arrowX1 = playerX[0]-cameraX + Math.cos(degToRad(playerDirection[0])) * ((playerSize*((100+(playerHeight[0]/1.5))/100))/2 - arrowSize1 * 0.7)
-                                    const arrowY1 = playerY[0]-cameraY + Math.sin(degToRad(playerDirection[0])) * ((playerSize*((100+(playerHeight[0]/1.5))/100))/2 - arrowSize1 * 0.7)
-                                    drawLine(arrowX1, arrowY1, 
-                                        [arrowSize1 * 0.1, -arrowSize1 * 0.7, -arrowSize1 * 0.7], 
-                                        [0, arrowSize1 * 0.7, -arrowSize1 * 0.7], 
-                                        playerDirection[0], '#bf1d1d', '#bf1d1d', 2, true)
-
-                                    drawCircle(playerX[1]-cameraX, playerY[1]-cameraY, (playerSize*((100+(playerHeight[1]/1.5))/100))/2, playerDirection[1], '#ff2626', '#bf1d1d', 2)
-                                    drawRect(playerX[1]-cameraX-Math.cos(degToRad(playerDirection[1]))*((playerSize*((100+(playerHeight[1]/1.5))/100))/4 + (playerSize*((100+(playerHeight[1]/1.5))/100))*-0.2), playerY[1]-cameraY-Math.sin(degToRad(playerDirection[1]))*((playerSize*((100+(playerHeight[1]/1.5))/100))/4 + (playerSize*((100+(playerHeight[1]/1.5))/100))*-0.2), (playerSize*((100+(playerHeight[1]/1.5))/100))/2, (playerSize*((100+(playerHeight[1]/1.5))/100))/4, playerDirection[1], '#bf1d1d', '#ff00ff', 0)
-                                    const arrowX2 = playerX[1]-cameraX + Math.cos(degToRad(playerDirection[1])) * ((playerSize*((100+(playerHeight[1]/1.5))/100))/2 - arrowSize2 * 0.7)
-                                    const arrowY2 = playerY[1]-cameraY + Math.sin(degToRad(playerDirection[1])) * ((playerSize*((100+(playerHeight[1]/1.5))/100))/2 - arrowSize2 * 0.7)
-                                    drawLine(arrowX2, arrowY2,
-                                        [arrowSize2 * 0.1, -arrowSize2 * 0.7, -arrowSize2 * 0.7],
-                                        [0, arrowSize2 * 0.7, -arrowSize2 * 0.7],
-                                        playerDirection[1], '#bf1d1d', '#bf1d1d', 2, true)
-                                } else {
-                                    drawRect((playerX[0] + playerX[1])/2 - cameraX, (playerY[0] + playerY[1])/2 - cameraY, distanceTo(playerX[1], playerY[1], playerX[0], playerY[0]), 8, directionTo(playerX[1], playerY[1], playerX[0], playerY[0]), '#ff2626', '#bf1d1d', 1)
-                                    
-                                    drawCircle(playerX[1]-cameraX, playerY[1]-cameraY, (playerSize*((100+(playerHeight[1]/1.5))/100))/2, playerDirection[1], '#ff2626', '#bf1d1d', 2)
-                                    drawRect(playerX[1]-cameraX-Math.cos(degToRad(playerDirection[1]))*((playerSize*((100+(playerHeight[1]/1.5))/100))/4 + (playerSize*((100+(playerHeight[1]/1.5))/100))*-0.2), playerY[1]-cameraY-Math.sin(degToRad(playerDirection[1]))*((playerSize*((100+(playerHeight[1]/1.5))/100))/4 + (playerSize*((100+(playerHeight[1]/1.5))/100))*-0.2), (playerSize*((100+(playerHeight[1]/1.5))/100))/2, (playerSize*((100+(playerHeight[1]/1.5))/100))/4, playerDirection[1], '#bf1d1d', '#ff00ff', 0)
-                                    const arrowX2 = playerX[1]-cameraX + Math.cos(degToRad(playerDirection[1])) * ((playerSize*((100+(playerHeight[1]/1.5))/100))/2 - arrowSize2 * 0.7)
-                                    const arrowY2 = playerY[1]-cameraY + Math.sin(degToRad(playerDirection[1])) * ((playerSize*((100+(playerHeight[1]/1.5))/100))/2 - arrowSize2 * 0.7)
-                                    drawLine(arrowX2, arrowY2,
-                                        [arrowSize2 * 0.1, -arrowSize2 * 0.7, -arrowSize2 * 0.7],
-                                        [0, arrowSize2 * 0.7, -arrowSize2 * 0.7],
-                                        playerDirection[1], '#bf1d1d', '#bf1d1d', 2, true)
-
-                                    drawCircle(playerX[0]-cameraX, playerY[0]-cameraY, (playerSize*((100+(playerHeight[0]/1.5))/100))/2, playerDirection[0], '#ff2626', '#bf1d1d', 2)
-                                    drawRect(playerX[0]-cameraX-Math.cos(degToRad(playerDirection[0]))*((playerSize*((100+(playerHeight[0]/1.5))/100))/4 + (playerSize*((100+(playerHeight[0]/1.5))/100))*-0.2), playerY[0]-cameraY-Math.sin(degToRad(playerDirection[0]))*((playerSize*((100+(playerHeight[0]/1.5))/100))/4 + (playerSize*((100+(playerHeight[0]/1.5))/100))*-0.2), (playerSize*((100+(playerHeight[0]/1.5))/100))/2, (playerSize*((100+(playerHeight[0]/1.5))/100))/4, playerDirection[0], '#bf1d1d', '#ff00ff', 0)
-                                    const arrowX1 = playerX[0]-cameraX + Math.cos(degToRad(playerDirection[0])) * ((playerSize*((100+(playerHeight[0]/1.5))/100))/2 - arrowSize1 * 0.7)
-                                    const arrowY1 = playerY[0]-cameraY + Math.sin(degToRad(playerDirection[0])) * ((playerSize*((100+(playerHeight[0]/1.5))/100))/2 - arrowSize1 * 0.7)
-                                    drawLine(arrowX1, arrowY1,
-                                        [arrowSize1 * 0.1, -arrowSize1 * 0.7, -arrowSize1 * 0.7],
-                                        [0, arrowSize1 * 0.7, -arrowSize1 * 0.7],
-                                        playerDirection[0], '#bf1d1d', '#bf1d1d', 2, true)
-                                }
+                    // Entities - no: en titties :P
+                    if (entityJSON.rockX) {
+                        for (let i=0; i < entityJSON.rockX.length; i++) {
+                            if (entityJSON.rockDuplicated[i] == 1) {
+                                drawShape(entityJSON.rockX[i]-cameraX, entityJSON.rockY[i]-cameraY, 7, 7, i, '#777777', '#606060', 2)
+                                drawShape(entityJSON.rockX[i]+(Math.cos(degToRad(entityJSON.rockDirection[i]))*5)-cameraX, entityJSON.rockY[i]+(Math.sin(degToRad(entityJSON.rockDirection[i]))*5)-cameraY, 7, 7, i, '#777777', '#606060', 2)
                             } else {
-                                const arrowSize1 = (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/3
-                                const arrowSize2 = (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/3
-                                if (entityJSON.playerHeight[i][0] < entityJSON.playerHeight[i][1]) {
-                                    drawRect((entityJSON.playerX[i][0] + entityJSON.playerX[i][1])/2 - cameraX, (entityJSON.playerY[i][0] + entityJSON.playerY[i][1])/2 - cameraY, distanceTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), 8, directionTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), '#2626ff', '#1d1dbf', 1)
-                                    drawCircle(entityJSON.playerX[i][0]-cameraX, entityJSON.playerY[i][0]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2, entityJSON.playerDirection[i][0], '#2626ff', '#1d1dbf', 2)
-                                    drawRect(entityJSON.playerX[i][0]-cameraX-Math.cos(degToRad(entityJSON.playerDirection[i][0]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))*-0.2), entityJSON.playerY[i][0]-cameraY-Math.sin(degToRad(entityJSON.playerDirection[i][0]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))*-0.2), (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/4, entityJSON.playerDirection[i][0], '#1d1dbf', '#2626ff', 0)
-                                    const arrowX1 = entityJSON.playerX[i][0]-cameraX + Math.cos(degToRad(entityJSON.playerDirection[i][0])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2 - arrowSize1 * 0.7)
-                                    const arrowY1 = entityJSON.playerY[i][0]-cameraY + Math.sin(degToRad(entityJSON.playerDirection[i][0])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2 - arrowSize1 * 0.7)
-                                    drawLine(arrowX1, arrowY1,
-                                        [arrowSize1 * 0.1, -arrowSize1 * 0.7, -arrowSize1 * 0.7],
-                                        [0, arrowSize1 * 0.7, -arrowSize1 * 0.7],
-                                        entityJSON.playerDirection[i][0], '#1d1dbf', '#1d1dbf', 2, true)
+                                drawShape(entityJSON.rockX[i]-cameraX, entityJSON.rockY[i]-cameraY, 7, 7, i, '#777777', '#606060', 2)
+                            }
+                        }
+                    }
 
-                                    drawCircle(entityJSON.playerX[i][1]-cameraX, entityJSON.playerY[i][1]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2, entityJSON.playerDirection[i][1], '#2626ff', '#1d1dbf', 2)
-                                    drawRect(entityJSON.playerX[i][1]-cameraX-Math.cos(degToRad(entityJSON.playerDirection[i][1]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))*-0.2), entityJSON.playerY[i][1]-cameraY-Math.sin(degToRad(entityJSON.playerDirection[i][1]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))*-0.2), (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/4, entityJSON.playerDirection[i][1], '#1d1dbf', '#2626ff', 0)
-                                    const arrowX2 = entityJSON.playerX[i][1]-cameraX + Math.cos(degToRad(entityJSON.playerDirection[i][1])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2 - arrowSize2 * 0.7)
-                                    const arrowY2 = entityJSON.playerY[i][1]-cameraY + Math.sin(degToRad(entityJSON.playerDirection[i][1])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2 - arrowSize2 * 0.7)
-                                    drawLine(arrowX2, arrowY2,
-                                        [arrowSize2 * 0.1, -arrowSize2 * 0.7, -arrowSize2 * 0.7],
-                                        [0, arrowSize2 * 0.7, -arrowSize2 * 0.7],
-                                        entityJSON.playerDirection[i][1], '#1d1dbf', '#1d1dbf', 2, true)
-                                } else {
-                                    drawRect((entityJSON.playerX[i][0] + entityJSON.playerX[i][1])/2 - cameraX, (entityJSON.playerY[i][0] + entityJSON.playerY[i][1])/2 - cameraY, distanceTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), 8, directionTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), '#2626ff', '#1d1dbf', 1)     
-                                    drawCircle(entityJSON.playerX[i][1]-cameraX, entityJSON.playerY[i][1]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2, entityJSON.playerDirection[i][1], '#2626ff', '#1d1dbf', 2)
-                                    drawRect(entityJSON.playerX[i][1]-cameraX-Math.cos(degToRad(entityJSON.playerDirection[i][1]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))*-0.2), entityJSON.playerY[i][1]-cameraY-Math.sin(degToRad(entityJSON.playerDirection[i][1]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))*-0.2), (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/4, entityJSON.playerDirection[i][1], '#1d1dbf', '#2626ff', 0)
-                                    const arrowX2 = entityJSON.playerX[i][1]-cameraX + Math.cos(degToRad(entityJSON.playerDirection[i][1])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2 - arrowSize2 * 0.7)
-                                    const arrowY2 = entityJSON.playerY[i][1]-cameraY + Math.sin(degToRad(entityJSON.playerDirection[i][1])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2 - arrowSize2 * 0.7)
-                                    drawLine(arrowX2, arrowY2,
-                                        [arrowSize2 * 0.1, -arrowSize2 * 0.7, -arrowSize2 * 0.7],
-                                        [0, arrowSize2 * 0.7, -arrowSize2 * 0.7],
-                                        entityJSON.playerDirection[i][1], '#1d1dbf', '#1d1dbf', 2, true)
-
-                                    drawCircle(entityJSON.playerX[i][0]-cameraX, entityJSON.playerY[i][0]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2, entityJSON.playerDirection[i][0], '#2626ff', '#1d1dbf', 2)
-                                    drawRect(entityJSON.playerX[i][0]-cameraX-Math.cos(degToRad(entityJSON.playerDirection[i][0]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))*-0.2), entityJSON.playerY[i][0]-cameraY-Math.sin(degToRad(entityJSON.playerDirection[i][0]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))*-0.2), (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/4, entityJSON.playerDirection[i][0], '#1d1dbf', '#2626ff', 0)
-                                    const arrowX1 = entityJSON.playerX[i][0]-cameraX + Math.cos(degToRad(entityJSON.playerDirection[i][0])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2 - arrowSize1 * 0.7)
-                                    const arrowY1 = entityJSON.playerY[i][0]-cameraY + Math.sin(degToRad(entityJSON.playerDirection[i][0])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2 - arrowSize1 * 0.7)
-                                    drawLine(arrowX1, arrowY1,
-                                        [arrowSize1 * 0.1, -arrowSize1 * 0.7, -arrowSize1 * 0.7],
-                                        [0, arrowSize1 * 0.7, -arrowSize1 * 0.7],
-                                        entityJSON.playerDirection[i][0], '#1d1dbf', '#1d1dbf', 2, true)
+                    if (entityJSON.boulderX) {
+                        for (let i=0; i < entityJSON.boulderX.length; i++) {
+                            if (entityJSON.boulderSpawnCondition[i] == 1) {
+                                switch (entityJSON.boulderRarity[i]) {
+                                    case 0: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#777777', '#606060', 4); break
+                                    case 1: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#f2f2f2', '#cccccc', 4); break
+                                    case 2: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ffbf00', '#d9a300', 4); break
+                                    case 3: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#58f5db', '#49ccb6', 4); break
+                                    case 4: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ff3333', '#d90000', 4); break
+                                }
+                            } else if (entityJSON.boulderSpawnCondition[i] == 2) {
+                                switch (entityJSON.boulderRarity[i]) {
+                                    case 0: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#777777', '#606060', 8); break
+                                    case 1: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#f2f2f2', '#cccccc', 8); break
+                                    case 2: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ffbf00', '#d9a300', 8); break
+                                    case 3: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#58f5db', '#49ccb6', 8); break
+                                    case 4: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ff3333', '#d90000', 8); break
                                 }
                             }
-                        }                        
-                    }
-                }
-
-
-                let barX = 0
-                let barY = 0
-                let barPositionX = 0
-                let barPositionY = 0
-                let fillX = 0
-                let fillY = 0
-                let percent = 0
-
-                // Health Bars
-                if (entityJSON.boulderX) {
-                    for (let i=0; i < entityJSON.boulderX.length; i++) {
-                        if (entityJSON.boulderHP[i] != entityJSON.boulderOriginalHP[i]) {
-                            barX = 48*0.75
-                            barY = 8*0.75
-                            barPositionX = entityJSON.boulderX[i]-cameraX
-                            barPositionY = entityJSON.boulderY[i]+((entityJSON.boulderSize[i]/2)+5)-cameraY
-                            fillX = 46*0.75
-                            fillY = 6*0.75
-                            percent = clamp(entityJSON.boulderHP[i]/entityJSON.boulderOriginalHP[i], 0, 1)
-                            drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 1*(fov/360))
-                            drawSquircle(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff0d0d', '#000000', 0, 1*(fov/360))
                         }
                     }
-                }
-                if (entityJSON.sanctuaryX) {
-                    for (let i=0; i < entityJSON.sanctuaryX.length; i++) {
-                        if (entityJSON.sanctuaryHP[i] != entityJSON.sanctuaryOriginalHP[i]) {
-                            barX = 48*0.75
-                            barY = 8*0.75
-                            barPositionX = entityJSON.sanctuaryX[i]-cameraX
-                            barPositionY = entityJSON.sanctuaryY[i]+((entityJSON.sanctuarySize[i]/2)+5)-cameraY
-                            fillX = 46*0.75
-                            fillY = 6*0.75
-                            percent = clamp(entityJSON.sanctuaryHP[i]/entityJSON.sanctuaryOriginalHP[i], 0, 1)
-                            drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 1*(fov/360))
-                            drawSquircle(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#787878', '#000000', 0, 1*(fov/360))
+
+                    if (entityJSON.sanctuaryX) {
+                        for (let i=0; i < entityJSON.sanctuaryX.length; i++) {
+                            drawCircle(entityJSON.sanctuaryX[i]-cameraX, entityJSON.sanctuaryY[i]-cameraY, entityJSON.sanctuarySize[i]/2, i, '#78787833', '#ff0000', 0)
                         }
                     }
-                }
-                if (entityJSON.playerX) {
-                    for (let i=0; i < entityJSON.playerX.length; i++) {
-                        if (entityJSON.playerHP[i] > 0) {
-                            barX = 48*0.75
-                            barY = 8*0.75
-                            let lowestFoot = entityJSON.playerY[i][0] < entityJSON.playerY[i][1] ? 1 : 0
-                            let highestFoot = entityJSON.playerY[i][0] < entityJSON.playerY[i][1] ? 0 : 1
-                            barPositionX = entityJSON.playerX[i][lowestFoot]-cameraX
-                            barPositionY = entityJSON.playerY[i][lowestFoot]+((entityJSON.playerSize[i]/2)+7)-cameraY
-                            fillX = 46*0.75
-                            fillY = 6*0.75
-                            percent = clamp(entityJSON.playerHP[i]/entityJSON.playerOriginalHP[i], 0, 1)
-                            drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 1*(fov/360))
-                            drawSquircle(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff0d0d', '#000000', 0, 1*(fov/360))
-                            namePositionX = entityJSON.playerX[i][highestFoot]-cameraX
-                            namePositionY = entityJSON.playerY[i][highestFoot]-((entityJSON.playerSize[i]/2)+7)-cameraY
-                            drawText(namePositionX, namePositionY-6, 8, '#000000', `${entityJSON.playerUsername ? entityJSON.playerUsername[i] : 'unknown name??? BUG'}`, 0, 'center')
-                            drawText(namePositionX, namePositionY, 6, '#000000', `${entityJSON.playerXP ? entityJSON.playerXP[i] : 'unknown xp??? BUG'} XP`, 0, 'center')
+
+                    if (entityJSON.playerX) {
+                        for (let i=0; i < entityJSON.playerX.length; i++) {
+                            if (entityJSON.playerHP[i] > 0) {
+                                if (i == playerID) {
+                                    const arrowSize1 = (playerSize*((100+(playerHeight[0]/1.5))/100))/3
+                                    const arrowSize2 = (playerSize*((100+(playerHeight[1]/1.5))/100))/3
+                                    if (entityJSON.playerHeight[i][0] < entityJSON.playerHeight[i][1]) {
+                                        drawRect((playerX[0] + playerX[1])/2 - cameraX, (playerY[0] + playerY[1])/2 - cameraY, distanceTo(playerX[1], playerY[1], playerX[0], playerY[0]), 8, directionTo(playerX[1], playerY[1], playerX[0], playerY[0]), '#ff2626', '#bf1d1d', 1)
+                                        
+                                        drawCircle(playerX[0]-cameraX, playerY[0]-cameraY, (playerSize*((100+(playerHeight[0]/1.5))/100))/2, playerDirection[0], '#ff2626', '#bf1d1d', 2)
+                                        drawRect(playerX[0]-cameraX-Math.cos(degToRad(playerDirection[0]))*((playerSize*((100+(playerHeight[0]/1.5))/100))/4 + (playerSize*((100+(playerHeight[0]/1.5))/100))*-0.2), playerY[0]-cameraY-Math.sin(degToRad(playerDirection[0]))*((playerSize*((100+(playerHeight[0]/1.5))/100))/4 + (playerSize*((100+(playerHeight[0]/1.5))/100))*-0.2), (playerSize*((100+(playerHeight[0]/1.5))/100))/2, (playerSize*((100+(playerHeight[0]/1.5))/100))/4, playerDirection[0], '#bf1d1d', '#ff00ff', 0)
+                                        const arrowX1 = playerX[0]-cameraX + Math.cos(degToRad(playerDirection[0])) * ((playerSize*((100+(playerHeight[0]/1.5))/100))/2 - arrowSize1 * 0.7)
+                                        const arrowY1 = playerY[0]-cameraY + Math.sin(degToRad(playerDirection[0])) * ((playerSize*((100+(playerHeight[0]/1.5))/100))/2 - arrowSize1 * 0.7)
+                                        drawLine(arrowX1, arrowY1, 
+                                            [arrowSize1 * 0.1, -arrowSize1 * 0.7, -arrowSize1 * 0.7], 
+                                            [0, arrowSize1 * 0.7, -arrowSize1 * 0.7], 
+                                            playerDirection[0], '#bf1d1d', '#bf1d1d', 2, true)
+
+                                        drawCircle(playerX[1]-cameraX, playerY[1]-cameraY, (playerSize*((100+(playerHeight[1]/1.5))/100))/2, playerDirection[1], '#ff2626', '#bf1d1d', 2)
+                                        drawRect(playerX[1]-cameraX-Math.cos(degToRad(playerDirection[1]))*((playerSize*((100+(playerHeight[1]/1.5))/100))/4 + (playerSize*((100+(playerHeight[1]/1.5))/100))*-0.2), playerY[1]-cameraY-Math.sin(degToRad(playerDirection[1]))*((playerSize*((100+(playerHeight[1]/1.5))/100))/4 + (playerSize*((100+(playerHeight[1]/1.5))/100))*-0.2), (playerSize*((100+(playerHeight[1]/1.5))/100))/2, (playerSize*((100+(playerHeight[1]/1.5))/100))/4, playerDirection[1], '#bf1d1d', '#ff00ff', 0)
+                                        const arrowX2 = playerX[1]-cameraX + Math.cos(degToRad(playerDirection[1])) * ((playerSize*((100+(playerHeight[1]/1.5))/100))/2 - arrowSize2 * 0.7)
+                                        const arrowY2 = playerY[1]-cameraY + Math.sin(degToRad(playerDirection[1])) * ((playerSize*((100+(playerHeight[1]/1.5))/100))/2 - arrowSize2 * 0.7)
+                                        drawLine(arrowX2, arrowY2,
+                                            [arrowSize2 * 0.1, -arrowSize2 * 0.7, -arrowSize2 * 0.7],
+                                            [0, arrowSize2 * 0.7, -arrowSize2 * 0.7],
+                                            playerDirection[1], '#bf1d1d', '#bf1d1d', 2, true)
+                                    } else {
+                                        drawRect((playerX[0] + playerX[1])/2 - cameraX, (playerY[0] + playerY[1])/2 - cameraY, distanceTo(playerX[1], playerY[1], playerX[0], playerY[0]), 8, directionTo(playerX[1], playerY[1], playerX[0], playerY[0]), '#ff2626', '#bf1d1d', 1)
+                                        
+                                        drawCircle(playerX[1]-cameraX, playerY[1]-cameraY, (playerSize*((100+(playerHeight[1]/1.5))/100))/2, playerDirection[1], '#ff2626', '#bf1d1d', 2)
+                                        drawRect(playerX[1]-cameraX-Math.cos(degToRad(playerDirection[1]))*((playerSize*((100+(playerHeight[1]/1.5))/100))/4 + (playerSize*((100+(playerHeight[1]/1.5))/100))*-0.2), playerY[1]-cameraY-Math.sin(degToRad(playerDirection[1]))*((playerSize*((100+(playerHeight[1]/1.5))/100))/4 + (playerSize*((100+(playerHeight[1]/1.5))/100))*-0.2), (playerSize*((100+(playerHeight[1]/1.5))/100))/2, (playerSize*((100+(playerHeight[1]/1.5))/100))/4, playerDirection[1], '#bf1d1d', '#ff00ff', 0)
+                                        const arrowX2 = playerX[1]-cameraX + Math.cos(degToRad(playerDirection[1])) * ((playerSize*((100+(playerHeight[1]/1.5))/100))/2 - arrowSize2 * 0.7)
+                                        const arrowY2 = playerY[1]-cameraY + Math.sin(degToRad(playerDirection[1])) * ((playerSize*((100+(playerHeight[1]/1.5))/100))/2 - arrowSize2 * 0.7)
+                                        drawLine(arrowX2, arrowY2,
+                                            [arrowSize2 * 0.1, -arrowSize2 * 0.7, -arrowSize2 * 0.7],
+                                            [0, arrowSize2 * 0.7, -arrowSize2 * 0.7],
+                                            playerDirection[1], '#bf1d1d', '#bf1d1d', 2, true)
+
+                                        drawCircle(playerX[0]-cameraX, playerY[0]-cameraY, (playerSize*((100+(playerHeight[0]/1.5))/100))/2, playerDirection[0], '#ff2626', '#bf1d1d', 2)
+                                        drawRect(playerX[0]-cameraX-Math.cos(degToRad(playerDirection[0]))*((playerSize*((100+(playerHeight[0]/1.5))/100))/4 + (playerSize*((100+(playerHeight[0]/1.5))/100))*-0.2), playerY[0]-cameraY-Math.sin(degToRad(playerDirection[0]))*((playerSize*((100+(playerHeight[0]/1.5))/100))/4 + (playerSize*((100+(playerHeight[0]/1.5))/100))*-0.2), (playerSize*((100+(playerHeight[0]/1.5))/100))/2, (playerSize*((100+(playerHeight[0]/1.5))/100))/4, playerDirection[0], '#bf1d1d', '#ff00ff', 0)
+                                        const arrowX1 = playerX[0]-cameraX + Math.cos(degToRad(playerDirection[0])) * ((playerSize*((100+(playerHeight[0]/1.5))/100))/2 - arrowSize1 * 0.7)
+                                        const arrowY1 = playerY[0]-cameraY + Math.sin(degToRad(playerDirection[0])) * ((playerSize*((100+(playerHeight[0]/1.5))/100))/2 - arrowSize1 * 0.7)
+                                        drawLine(arrowX1, arrowY1,
+                                            [arrowSize1 * 0.1, -arrowSize1 * 0.7, -arrowSize1 * 0.7],
+                                            [0, arrowSize1 * 0.7, -arrowSize1 * 0.7],
+                                            playerDirection[0], '#bf1d1d', '#bf1d1d', 2, true)
+                                    }
+                                } else {
+                                    const arrowSize1 = (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/3
+                                    const arrowSize2 = (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/3
+                                    if (entityJSON.playerHeight[i][0] < entityJSON.playerHeight[i][1]) {
+                                        drawRect((entityJSON.playerX[i][0] + entityJSON.playerX[i][1])/2 - cameraX, (entityJSON.playerY[i][0] + entityJSON.playerY[i][1])/2 - cameraY, distanceTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), 8, directionTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), '#2626ff', '#1d1dbf', 1)
+                                        drawCircle(entityJSON.playerX[i][0]-cameraX, entityJSON.playerY[i][0]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2, entityJSON.playerDirection[i][0], '#2626ff', '#1d1dbf', 2)
+                                        drawRect(entityJSON.playerX[i][0]-cameraX-Math.cos(degToRad(entityJSON.playerDirection[i][0]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))*-0.2), entityJSON.playerY[i][0]-cameraY-Math.sin(degToRad(entityJSON.playerDirection[i][0]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))*-0.2), (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/4, entityJSON.playerDirection[i][0], '#1d1dbf', '#2626ff', 0)
+                                        const arrowX1 = entityJSON.playerX[i][0]-cameraX + Math.cos(degToRad(entityJSON.playerDirection[i][0])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2 - arrowSize1 * 0.7)
+                                        const arrowY1 = entityJSON.playerY[i][0]-cameraY + Math.sin(degToRad(entityJSON.playerDirection[i][0])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2 - arrowSize1 * 0.7)
+                                        drawLine(arrowX1, arrowY1,
+                                            [arrowSize1 * 0.1, -arrowSize1 * 0.7, -arrowSize1 * 0.7],
+                                            [0, arrowSize1 * 0.7, -arrowSize1 * 0.7],
+                                            entityJSON.playerDirection[i][0], '#1d1dbf', '#1d1dbf', 2, true)
+
+                                        drawCircle(entityJSON.playerX[i][1]-cameraX, entityJSON.playerY[i][1]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2, entityJSON.playerDirection[i][1], '#2626ff', '#1d1dbf', 2)
+                                        drawRect(entityJSON.playerX[i][1]-cameraX-Math.cos(degToRad(entityJSON.playerDirection[i][1]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))*-0.2), entityJSON.playerY[i][1]-cameraY-Math.sin(degToRad(entityJSON.playerDirection[i][1]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))*-0.2), (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/4, entityJSON.playerDirection[i][1], '#1d1dbf', '#2626ff', 0)
+                                        const arrowX2 = entityJSON.playerX[i][1]-cameraX + Math.cos(degToRad(entityJSON.playerDirection[i][1])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2 - arrowSize2 * 0.7)
+                                        const arrowY2 = entityJSON.playerY[i][1]-cameraY + Math.sin(degToRad(entityJSON.playerDirection[i][1])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2 - arrowSize2 * 0.7)
+                                        drawLine(arrowX2, arrowY2,
+                                            [arrowSize2 * 0.1, -arrowSize2 * 0.7, -arrowSize2 * 0.7],
+                                            [0, arrowSize2 * 0.7, -arrowSize2 * 0.7],
+                                            entityJSON.playerDirection[i][1], '#1d1dbf', '#1d1dbf', 2, true)
+                                    } else {
+                                        drawRect((entityJSON.playerX[i][0] + entityJSON.playerX[i][1])/2 - cameraX, (entityJSON.playerY[i][0] + entityJSON.playerY[i][1])/2 - cameraY, distanceTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), 8, directionTo(entityJSON.playerX[i][1], entityJSON.playerY[i][1], entityJSON.playerX[i][0], entityJSON.playerY[i][0]), '#2626ff', '#1d1dbf', 1)     
+                                        drawCircle(entityJSON.playerX[i][1]-cameraX, entityJSON.playerY[i][1]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2, entityJSON.playerDirection[i][1], '#2626ff', '#1d1dbf', 2)
+                                        drawRect(entityJSON.playerX[i][1]-cameraX-Math.cos(degToRad(entityJSON.playerDirection[i][1]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))*-0.2), entityJSON.playerY[i][1]-cameraY-Math.sin(degToRad(entityJSON.playerDirection[i][1]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))*-0.2), (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/4, entityJSON.playerDirection[i][1], '#1d1dbf', '#2626ff', 0)
+                                        const arrowX2 = entityJSON.playerX[i][1]-cameraX + Math.cos(degToRad(entityJSON.playerDirection[i][1])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2 - arrowSize2 * 0.7)
+                                        const arrowY2 = entityJSON.playerY[i][1]-cameraY + Math.sin(degToRad(entityJSON.playerDirection[i][1])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][1]/1.5))/100))/2 - arrowSize2 * 0.7)
+                                        drawLine(arrowX2, arrowY2,
+                                            [arrowSize2 * 0.1, -arrowSize2 * 0.7, -arrowSize2 * 0.7],
+                                            [0, arrowSize2 * 0.7, -arrowSize2 * 0.7],
+                                            entityJSON.playerDirection[i][1], '#1d1dbf', '#1d1dbf', 2, true)
+
+                                        drawCircle(entityJSON.playerX[i][0]-cameraX, entityJSON.playerY[i][0]-cameraY, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2, entityJSON.playerDirection[i][0], '#2626ff', '#1d1dbf', 2)
+                                        drawRect(entityJSON.playerX[i][0]-cameraX-Math.cos(degToRad(entityJSON.playerDirection[i][0]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))*-0.2), entityJSON.playerY[i][0]-cameraY-Math.sin(degToRad(entityJSON.playerDirection[i][0]))*((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/4 + (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))*-0.2), (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2, (entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/4, entityJSON.playerDirection[i][0], '#1d1dbf', '#2626ff', 0)
+                                        const arrowX1 = entityJSON.playerX[i][0]-cameraX + Math.cos(degToRad(entityJSON.playerDirection[i][0])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2 - arrowSize1 * 0.7)
+                                        const arrowY1 = entityJSON.playerY[i][0]-cameraY + Math.sin(degToRad(entityJSON.playerDirection[i][0])) * ((entityJSON.playerSize[i]*((100+(entityJSON.playerHeight[i][0]/1.5))/100))/2 - arrowSize1 * 0.7)
+                                        drawLine(arrowX1, arrowY1,
+                                            [arrowSize1 * 0.1, -arrowSize1 * 0.7, -arrowSize1 * 0.7],
+                                            [0, arrowSize1 * 0.7, -arrowSize1 * 0.7],
+                                            entityJSON.playerDirection[i][0], '#1d1dbf', '#1d1dbf', 2, true)
+                                    }
+                                }
+                            }                        
                         }
                     }
-                }
 
-                // HUD
-                barX = 48*3*(fov/360)
-                barY = 8*3*(fov/360)
-                barPositionX = 0
-                barPositionY = screenSizeY/2-(barY/2)
-                fillX = 46*3*(fov/360)
-                fillY = 6*3*(fov/360)
-                targetPercentHP = clamp(playerHP/(150+(playerJSON.level*6)+(stats.maxHealth*60)), 0.015, 1)
-                percentHP += (targetPercentHP-percentHP)*0.2
-                drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 2*(fov/360))
-                drawSquircle(barPositionX-(fillX/2)*(1-percentHP), barPositionY, fillX*percentHP, fillY, 0, '#ff0d0d', '#000000', 0, 2*(fov/360))
-                drawText(barPositionX, barPositionY, 10*(fov/360), '#ffffff', `${Math.floor(playerHP*100)/100} HP`, 0, 'center')
 
-                barX = 48*2*(fov/360)
-                barY = 8*2*(fov/360)
-                barPositionX = 0 
-                barPositionY = screenSizeY/2-(barY/2)-((7*3*(fov/360)))
-                fillX = 46*2*(fov/360)
-                fillY = 6*2*(fov/360)
-                targetPercentXP = clamp((playerXP-xpPerLevel[playerJSON.level])/(xpPerLevel[playerJSON.level]-xpPerLevel[playerJSON.level-1]), 0.02, 0.98)
-                percentXP += (targetPercentXP-percentXP)*0.1
-                if (playerJSON.level == 0) {percentXP = playerXP == 0 ? 0.02 : clamp(playerXP/xpPerLevel[1], 0.02, 0.98)}
-                drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 2*(fov/360))
-                drawSquircle(barPositionX-(fillX/2)*(1-percentXP), barPositionY, fillX*percentXP, fillY, 0, '#ff5d0d', '#000000', 0, 2*(fov/360))
-                drawText(barPositionX, barPositionY, 10*(fov/360), '#ffffff', `Level ${playerJSON.level} - ${Math.floor(playerXP)} XP`, 0, 'center')
+                    let barX = 0
+                    let barY = 0
+                    let barPositionX = 0
+                    let barPositionY = 0
+                    let fillX = 0
+                    let fillY = 0
+                    let percent = 0
 
-                let minimapSizeX = 70*(fov/360)
-                let minimapSizeY = 70*(fov/360)
-                let minimapPositionX = screenSizeX/2-(minimapSizeX/2)
-                let minimapPositionY = screenSizeY/2-(minimapSizeY/2)
-                let playerMapX = minimapPositionX+((playerX[otherFoot]+playerX[activeFoot])/2)/((serverJSON.borderSize)/(minimapSizeX/2))
-                let playerMapY = minimapPositionY+((playerY[otherFoot]+playerY[activeFoot])/2)/((serverJSON.borderSize)/(minimapSizeY/2))
-                drawSquircle(minimapPositionX, minimapPositionY, minimapSizeX, minimapSizeY, 0, '#82828240', '#c2c2c240', 2, 2*(fov/360))
-                drawShape(playerMapX, playerMapY, 2.5*(fov/360), 3, playerDirection[activeFoot], '#000000', 'ff00ff', 0)
-                if (entityJSON.sanctuaryX) {
-                    for (let i=0; i < entityJSON.sanctuaryX.length; i++) {
-                        playerMapX = minimapPositionX+(entityJSON.sanctuaryX[i])/((serverJSON.borderSize)/(minimapSizeX/2))
-                        playerMapY = minimapPositionY+(entityJSON.sanctuaryY[i])/((serverJSON.borderSize)/(minimapSizeY/2))
-                        drawShape(playerMapX, playerMapY, 2.5*(fov/360), 100, playerDirection[activeFoot], '#78787833', 'ff00ff', 0)
-                    }
-                }
-
-                let totalUpgradePoints = Object.values(stats).reduce((sum, val) => sum + val, 0)
-                let upgradePoints = upgradePointsPerLevel[playerJSON.level] - totalUpgradePoints
-                if (upgradePoints != 0 || isKeyPressed('m') || isKeyPressed('M') || deathScreen == 1) {
-                    for (let i=0; i < 10; i++) {
-                        barX = (96*(fov/360))
-                        barY = 10*(fov/360)
-                        barPositionX = -(screenSizeX/2-(barX/2))+(2*(fov/360))
-                        barPositionY = screenSizeY/2-(barY/2)-(i*12*(fov/360))-(2*(fov/360))
-                        fillX = 94*(fov/360)
-                        fillY = 8*(fov/360)
-                        drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 2*(fov/360))
-                        
-                        for (let s=0; s < 10; s++) {
-                            if (stats[reversedStatNames[i]] > s) {
-                                statX = 69/9*(fov/360)
-                                statPositionX = barPositionX+(s*(statX+1*(fov/360)))-(barX/2)+(statX/2)+1*(fov/360)
-                                drawSquircle(statPositionX, barPositionY, statX, fillY, 0, reversedStatColors[i], '#ff00ff', 0, 1*(fov/360))
+                    // Health Bars
+                    if (entityJSON.boulderX) {
+                        for (let i=0; i < entityJSON.boulderX.length; i++) {
+                            if (entityJSON.boulderHP[i] != entityJSON.boulderOriginalHP[i]) {
+                                barX = 48*0.75
+                                barY = 8*0.75
+                                barPositionX = entityJSON.boulderX[i]-cameraX
+                                barPositionY = entityJSON.boulderY[i]+((entityJSON.boulderSize[i]/2)+5)-cameraY
+                                fillX = 46*0.75
+                                fillY = 6*0.75
+                                percent = clamp(entityJSON.boulderHP[i]/entityJSON.boulderOriginalHP[i], 0, 1)
+                                drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 1*(fov/360))
+                                drawSquircle(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff0d0d', '#000000', 0, 1*(fov/360))
                             }
                         }
-                        plusButtonX = 16*(fov/360)
-                        plusButtonPositionX = barPositionX+(fillX/2)-(plusButtonX/2)
-                        drawSquircle(plusButtonPositionX, barPositionY, plusButtonX, fillY, 0, reversedStatColors[i], '#ff00ff', 0, 1*(fov/360))
-
-                        drawText((barPositionX)-(plusButtonX/2)-3, barPositionY, 6*(fov/360), '#ffffff', reversedStatDisplayText[i].slice(0, -4), 0, 'center')
-                        drawText((barPositionX+(barX/2))-(plusButtonX)-3, barPositionY, 6*(fov/360), '#ffffff', reversedStatDisplayText[i].slice(-3), 0, 'right')
-                        
                     }
-                    drawText((barPositionX+(barX/2))-5, barPositionY-15, 20*(fov/360), '#000000', `${upgradePoints}x`, 0, 'right')
-                }
-
-                let leaderboard = []
-                    if (showLeaderboard) {
-                        for (let i = 0; i < entityJSON.playerX.length; i++) {
-                            if (entityJSON.playerActive[i] && entityJSON.playerXP[i] > 0 && entityJSON.playerHP[i] > 0) {
-                                leaderboard.push({
-                                    name: entityJSON.playerUsername[i] || 'unnamed',
-                                    xp: entityJSON.playerXP[i],
-                                    id: i
-                                })
+                    if (entityJSON.sanctuaryX) {
+                        for (let i=0; i < entityJSON.sanctuaryX.length; i++) {
+                            if (entityJSON.sanctuaryHP[i] != entityJSON.sanctuaryOriginalHP[i]) {
+                                barX = 48*0.75
+                                barY = 8*0.75
+                                barPositionX = entityJSON.sanctuaryX[i]-cameraX
+                                barPositionY = entityJSON.sanctuaryY[i]+((entityJSON.sanctuarySize[i]/2)+5)-cameraY
+                                fillX = 46*0.75
+                                fillY = 6*0.75
+                                percent = clamp(entityJSON.sanctuaryHP[i]/entityJSON.sanctuaryOriginalHP[i], 0, 1)
+                                drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 1*(fov/360))
+                                drawSquircle(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#787878', '#000000', 0, 1*(fov/360))
                             }
                         }
-                        
-                        leaderboard.sort((a, b) => b.xp - a.xp)
-                        leaderboard = leaderboard.slice(0, 10)
-                        
-                        let barX = (96*(fov/360))
-                        let barY = 10*(fov/360)
-                        let fillX = 94*(fov/360)
-                        let fillY = 8*(fov/360)
-                        let barPositionX = screenSizeX/2 - barX - (2*(fov/360))
-                        let barPositionY = -screenSizeY/2 + barY + (2*(fov/360))
-                        let maxXP = leaderboard.length > 0 ? leaderboard[0].xp : 1
-                        drawSquircle(barPositionX + barX/2, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 2*(fov/360))
-                        drawText(barPositionX + barX/2, barPositionY, 8*(fov/360), '#ffffff', 'LEADERBOARD', 0, 'center')
-                        
-                        for (let i = 0; i < leaderboard.length; i++) {
-                            let player = leaderboard[i]
-                            barPositionY = barPositionY + ((i+1) * 12*(fov/360))
-                            let percent = clamp(player.xp / maxXP, 0.02, 1)
+                    }
+                    if (entityJSON.playerX) {
+                        for (let i=0; i < entityJSON.playerX.length; i++) {
+                            if (entityJSON.playerHP[i] > 0) {
+                                barX = 48*0.75
+                                barY = 8*0.75
+                                let lowestFoot = entityJSON.playerY[i][0] < entityJSON.playerY[i][1] ? 1 : 0
+                                let highestFoot = entityJSON.playerY[i][0] < entityJSON.playerY[i][1] ? 0 : 1
+                                barPositionX = entityJSON.playerX[i][lowestFoot]-cameraX
+                                barPositionY = entityJSON.playerY[i][lowestFoot]+((entityJSON.playerSize[i]/2)+7)-cameraY
+                                fillX = 46*0.75
+                                fillY = 6*0.75
+                                percent = clamp(entityJSON.playerHP[i]/entityJSON.playerOriginalHP[i], 0, 1)
+                                drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 1*(fov/360))
+                                drawSquircle(barPositionX-(fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff0d0d', '#000000', 0, 1*(fov/360))
+                                namePositionX = entityJSON.playerX[i][highestFoot]-cameraX
+                                namePositionY = entityJSON.playerY[i][highestFoot]-((entityJSON.playerSize[i]/2)+7)-cameraY
+                                drawText(namePositionX, namePositionY-6, 8, '#000000', `${entityJSON.playerUsername ? entityJSON.playerUsername[i] : 'unknown name??? BUG'}`, 0, 'center')
+                                drawText(namePositionX, namePositionY, 6, '#000000', `${entityJSON.playerXP ? entityJSON.playerXP[i] : 'unknown xp??? BUG'} XP`, 0, 'center')
+                            }
+                        }
+                    }
+
+                    // HUD
+                    barX = 48*3*(fov/360)
+                    barY = 8*3*(fov/360)
+                    barPositionX = 0
+                    barPositionY = screenSizeY/2-(barY/2)
+                    fillX = 46*3*(fov/360)
+                    fillY = 6*3*(fov/360)
+                    targetPercentHP = clamp(playerHP/(150+(playerJSON.level*6)+(stats.maxHealth*60)), 0.015, 1)
+                    percentHP += (targetPercentHP-percentHP)*0.2
+                    drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 2*(fov/360))
+                    drawSquircle(barPositionX-(fillX/2)*(1-percentHP), barPositionY, fillX*percentHP, fillY, 0, '#ff0d0d', '#000000', 0, 2*(fov/360))
+                    drawText(barPositionX, barPositionY, 10*(fov/360), '#ffffff', `${Math.floor(playerHP*100)/100} HP`, 0, 'center')
+
+                    barX = 48*2*(fov/360)
+                    barY = 8*2*(fov/360)
+                    barPositionX = 0 
+                    barPositionY = screenSizeY/2-(barY/2)-((7*3*(fov/360)))
+                    fillX = 46*2*(fov/360)
+                    fillY = 6*2*(fov/360)
+                    targetPercentXP = clamp((playerXP-xpPerLevel[playerJSON.level])/(xpPerLevel[playerJSON.level]-xpPerLevel[playerJSON.level-1]), 0.02, 0.98)
+                    percentXP += (targetPercentXP-percentXP)*0.1
+                    if (playerJSON.level == 0) {percentXP = playerXP == 0 ? 0.02 : clamp(playerXP/xpPerLevel[1], 0.02, 0.98)}
+                    drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 2*(fov/360))
+                    drawSquircle(barPositionX-(fillX/2)*(1-percentXP), barPositionY, fillX*percentXP, fillY, 0, '#ff5d0d', '#000000', 0, 2*(fov/360))
+                    drawText(barPositionX, barPositionY, 10*(fov/360), '#ffffff', `Level ${playerJSON.level} - ${Math.floor(playerXP)} XP`, 0, 'center')
+
+                    let minimapSizeX = 70*(fov/360)
+                    let minimapSizeY = 70*(fov/360)
+                    let minimapPositionX = screenSizeX/2-(minimapSizeX/2)
+                    let minimapPositionY = screenSizeY/2-(minimapSizeY/2)
+                    let playerMapX = minimapPositionX+((playerX[otherFoot]+playerX[activeFoot])/2)/((serverJSON.borderSize)/(minimapSizeX/2))
+                    let playerMapY = minimapPositionY+((playerY[otherFoot]+playerY[activeFoot])/2)/((serverJSON.borderSize)/(minimapSizeY/2))
+                    drawSquircle(minimapPositionX, minimapPositionY, minimapSizeX, minimapSizeY, 0, '#82828240', '#c2c2c240', 2, 2*(fov/360))
+                    drawShape(playerMapX, playerMapY, 2.5*(fov/360), 3, playerDirection[activeFoot], '#000000', 'ff00ff', 0)
+                    if (entityJSON.sanctuaryX) {
+                        for (let i=0; i < entityJSON.sanctuaryX.length; i++) {
+                            playerMapX = minimapPositionX+(entityJSON.sanctuaryX[i])/((serverJSON.borderSize)/(minimapSizeX/2))
+                            playerMapY = minimapPositionY+(entityJSON.sanctuaryY[i])/((serverJSON.borderSize)/(minimapSizeY/2))
+                            drawShape(playerMapX, playerMapY, 2.5*(fov/360), 100, playerDirection[activeFoot], '#78787833', 'ff00ff', 0)
+                        }
+                    }
+
+                    let totalUpgradePoints = Object.values(stats).reduce((sum, val) => sum + val, 0)
+                    let upgradePoints = upgradePointsPerLevel[playerJSON.level] - totalUpgradePoints
+                    if (upgradePoints != 0 || isKeyPressed('m') || isKeyPressed('M') || deathScreen == 1) {
+                        for (let i=0; i < 10; i++) {
+                            barX = (96*(fov/360))
+                            barY = 10*(fov/360)
+                            barPositionX = -(screenSizeX/2-(barX/2))+(2*(fov/360))
+                            barPositionY = screenSizeY/2-(barY/2)-(i*12*(fov/360))-(2*(fov/360))
+                            fillX = 94*(fov/360)
+                            fillY = 8*(fov/360)
+                            drawSquircle(barPositionX, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 2*(fov/360))
+                            
+                            for (let s=0; s < 10; s++) {
+                                if (stats[reversedStatNames[i]] > s) {
+                                    statX = 69/9*(fov/360)
+                                    statPositionX = barPositionX+(s*(statX+1*(fov/360)))-(barX/2)+(statX/2)+1*(fov/360)
+                                    drawSquircle(statPositionX, barPositionY, statX, fillY, 0, reversedStatColors[i], '#ff00ff', 0, 1*(fov/360))
+                                }
+                            }
+                            plusButtonX = 16*(fov/360)
+                            plusButtonPositionX = barPositionX+(fillX/2)-(plusButtonX/2)
+                            drawSquircle(plusButtonPositionX, barPositionY, plusButtonX, fillY, 0, reversedStatColors[i], '#ff00ff', 0, 1*(fov/360))
+
+                            drawText((barPositionX)-(plusButtonX/2)-3, barPositionY, 6*(fov/360), '#ffffff', reversedStatDisplayText[i].slice(0, -4), 0, 'center')
+                            drawText((barPositionX+(barX/2))-(plusButtonX)-3, barPositionY, 6*(fov/360), '#ffffff', reversedStatDisplayText[i].slice(-3), 0, 'right')
+                            
+                        }
+                        drawText((barPositionX+(barX/2))-5, barPositionY-15, 20*(fov/360), '#000000', `${upgradePoints}x`, 0, 'right')
+                    }
+
+                    let leaderboard = []
+                        if (showLeaderboard) {
+                            for (let i = 0; i < entityJSON.playerX.length; i++) {
+                                if (entityJSON.playerActive[i] && entityJSON.playerXP[i] > 0 && entityJSON.playerHP[i] > 0) {
+                                    leaderboard.push({
+                                        name: entityJSON.playerUsername[i] || 'unnamed',
+                                        xp: entityJSON.playerXP[i],
+                                        id: i
+                                    })
+                                }
+                            }
+                            
+                            leaderboard.sort((a, b) => b.xp - a.xp)
+                            leaderboard = leaderboard.slice(0, 10)
+                            
+                            let barX = (96*(fov/360))
+                            let barY = 10*(fov/360)
+                            let fillX = 94*(fov/360)
+                            let fillY = 8*(fov/360)
+                            let barPositionX = screenSizeX/2 - barX - (2*(fov/360))
+                            let barPositionY = -screenSizeY/2 + barY + (2*(fov/360))
+                            let maxXP = leaderboard.length > 0 ? leaderboard[0].xp : 1
                             drawSquircle(barPositionX + barX/2, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 2*(fov/360))
-                            drawSquircle(barPositionX + barX/2 - (fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff5d0d', '#000000', 0, 1*(fov/360))
-                            drawText(barPositionX + 5, barPositionY, 6*(fov/360), '#ffffff', `${i+1}. ${player.name}`, 0, 'left')
-                            drawText(barPositionX + barX - 5, barPositionY, 6*(fov/360), '#ffffff', `${player.xp} XP`, 0, 'right')
+                            drawText(barPositionX + barX/2, barPositionY, 8*(fov/360), '#ffffff', 'LEADERBOARD', 0, 'center')
+                            
+                            for (let i = 0; i < leaderboard.length; i++) {
+                                let player = leaderboard[i]
+                                barPositionY = barPositionY + ((i+1) * 12*(fov/360))
+                                let percent = clamp(player.xp / maxXP, 0.02, 1)
+                                drawSquircle(barPositionX + barX/2, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 2*(fov/360))
+                                drawSquircle(barPositionX + barX/2 - (fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff5d0d', '#000000', 0, 1*(fov/360))
+                                drawText(barPositionX + 5, barPositionY, 6*(fov/360), '#ffffff', `${i+1}. ${player.name}`, 0, 'left')
+                                drawText(barPositionX + barX - 5, barPositionY, 6*(fov/360), '#ffffff', `${player.xp} XP`, 0, 'right')
+                            }
                         }
+
+
+                    for (let i=0; i < notifications.text.length; i++) {
+                        drawText(0, (i+1)*12*(fov/360)-(screenSizeY/2), 10*(fov/360), notifications.color[i], notifications.text[i], 0, 'center')
                     }
-
-
-                for (let i=0; i < notifications.text.length; i++) {
-                    drawText(0, (i+1)*12*(fov/360)-(screenSizeY/2), 10*(fov/360), notifications.color[i], notifications.text[i], 0, 'center')
                 }
+                
 
-                // Death Screen
+                // Menus
                 if (deathScreen == 1) {
                     drawRect(0, 0, screenSizeX*(fov/360), screenSizeY*(fov/360), 0, '#00000080', 0, 0)
                     drawText(0, -50*(fov/360), 20*(fov/360), '#000000', `You failed to step on a rock`, 0, 'center')
@@ -947,15 +972,28 @@
                 }
                 
                 if (menu == 1) {
-                    drawRect(0, 0, screenSizeX*(fov/360), screenSizeY*(fov/360), 0, '#00000080', 0, 0)
                     let input = document.getElementById('usernameInput')
                     input.style.display = 'block'
                     
                     drawRectHTML(input, 0, 0, 200*(fov/360), 22*(fov/360), 0, '#ffffff', '#bfbfbf', 2)
                     input.style.fontSize = (16*(fov/360)*scale) + 'px'
                     
-                    drawText(0, 22*(fov/360), 16*(fov/360), '#000000', `Press Enter to play!`, 0, 'center')
-                    drawText(0, -22*(fov/360), 16*(fov/360), '#000000', `Connected!`, 0, 'center')
+                    if (playerID >= 0) {
+                        drawRect(0, 0, screenSizeX*(fov/360), screenSizeY*(fov/360), 0, '#00000080', 0, 0)
+                        drawText(0, -22*(fov/360), 16*(fov/360), '#000000', `Connected!`, 0, 'center')
+                        drawText(0, 22*(fov/360), 16*(fov/360), '#000000', `Press Enter to play!`, 0, 'center')
+                    } else if (disconnectReason == 'none') {
+                        drawRect(0, 0, screenSizeX*(fov/360), screenSizeY*(fov/360), 0, '#00000080', 0, 0)
+                        drawText(0, -22*(fov/360), 16*(fov/360), '#000000', `Connecting...`, 0, 'center')
+                    } else if (disconnectWasFromServer == false) {
+                        drawRect(0, 0, screenSizeX*(fov/360), screenSizeY*(fov/360), 0, '#ffdb0080', 0, 0)
+                        drawText(0, -22*(fov/360), 16*(fov/360), '#000000', `Failed to connect to server...`, 0, 'center')
+                        drawText(0, 22*(fov/360), 16*(fov/360), '#000000', `${disconnectReason}`, 0, 'center')
+                    } else if (disconnectWasFromServer == true) {
+                        drawRect(0, 0, screenSizeX*(fov/360), screenSizeY*(fov/360), 0, '#62000080', 0, 0)
+                        drawText(0, -22*(fov/360), 16*(fov/360), '#000000', `Disconnected!`, 0, 'center')
+                        drawText(0, 22*(fov/360), 16*(fov/360), '#000000', `${disconnectReason}`, 0, 'center')
+                    }
                     
                     username = input.value || 'unnamed'
                 } else {
@@ -964,15 +1002,17 @@
 
                 ctx.restore()
 
-                playerPackage = {
-                    worldMouseX: worldMouseX,
-                    worldMouseY: worldMouseY,
-                    mode: playerJSON.mode,
-                    stopped: playerJSON.stopped,
-                    upgradeKey: playerJSON.upgradeKey,
-                    username: username,
+                if (playerID >= 0) {
+                    playerPackage = {
+                        worldMouseX: worldMouseX,
+                        worldMouseY: worldMouseY,
+                        mode: playerJSON.mode,
+                        stopped: playerJSON.stopped,
+                        upgradeKey: playerJSON.upgradeKey,
+                        username: username,
+                    }
+                    sendData(serverULID, 'playerUpdate', playerID, playerPackage)
                 }
-                sendData(serverULID, 'playerUpdate', playerID, playerPackage)
                 
             }, 33.33)
         }
@@ -990,15 +1030,19 @@
                 enterWasPressedLastFrame = enterNow
 
                 if (enterPressedThisFrame) {
-                    if (deathScreen == 1) {
-                        deathScreen = 0
-                        menu = 1
-                    } else if (menu == 1) {
-                        menu = 0
-                        deathCheckCooldown = true
-                        await spawnPlayer()
-                        await waitUntil(() => entityJSON.playerHP[playerID] > 0)
-                        setTimeout(() => {deathCheckCooldown = false}, 3000)
+                    if (playerID >= 0) {
+                        if (deathScreen == 1) {
+                            deathScreen = 0
+                            menu = 1
+                        } else if (menu == 1) {
+                            menu = 0
+                            deathCheckCooldown = true
+                            await spawnPlayer()
+                            await waitUntil(() => entityJSON.playerHP[playerID] > 0)
+                            setTimeout(() => {deathCheckCooldown = false}, 3000)
+                        }
+                    } else {
+                        connectToServer(serverULID)
                     }
                 }
                 
