@@ -572,11 +572,6 @@
                 // if (playerID >= 0) is used in a lot of places as a way to determine if the player is connected to the server.
                 // a lotta stuff shouldn't even try to render or calculate before they connect.
                 // But some stuff (like menus) should still render before connecting.
-                if (Date.now() - lastPingUpdate > 66) {
-                    updatePingFromWebRTC()
-                    lastPingUpdate = Date.now()
-                }
-
                 let now = Date.now()
                 frameCount++
                 if (now - lastFpsTime >= 1000) {
@@ -587,6 +582,10 @@
                 let frameStart = performance.now()
 
                 if (playerID >= 0) {
+                    if (Date.now() - lastPingUpdate > 66) {
+                        updatePingFromWebRTC()
+                        lastPingUpdate = Date.now()
+                    }
                     playerX = entityJSON.playerX[playerID]
                     playerY = entityJSON.playerY[playerID]
                     playerHP = entityJSON.playerHP[playerID]
