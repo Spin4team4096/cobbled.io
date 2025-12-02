@@ -1090,7 +1090,8 @@
 
                 // Debug HUD
                 if (isKeyPressed('i') || isKeyPressed('I')) {
-                    drawText(-screenSizeX/2+2, -screenSizeY/2+2, 6, '#000000', 
+                    if (playerID >= 0) {
+                        drawText(-screenSizeX/2+2, -screenSizeY/2+2, 6, '#000000', 
 `=== DEBUG MENU ===
 FPS: ${fps}
 MSPT: ${Math.round(mspt*1000)/1000}
@@ -1104,6 +1105,7 @@ Map: ${serverJSON.borderSize*2}x${serverJSON.borderSize*2}
 Foot Height: ${entityJSON.playerHeight && entityJSON.playerHeight[playerID] ? entityJSON.playerHeight[playerID][activeFoot] : 'N/A'}
 Mode: ${playerJSON.mode}`
 , 0, 'left', 'stacked')
+                    }
                 }
 
                 // Menus
