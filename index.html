@@ -25,7 +25,7 @@
         // - Add kill notifications "You killed [player]"
         // - Add controller support
         // - Add mobile controls
-        // - Add boulder & rock variation (6-8 sides)
+        // - Make rocks have more jagged sides and design by using drawLine so the points are not all equistent
         // - Add server selector (top)
         // - Add "report an issue" button (under "press enter")
         // - Add Discord button (bottom left)
@@ -35,8 +35,12 @@
         // - Question button, which guides the player how to play the game
         // - SHAKE THE SCREEN WHEN TAKING DAMAGE ON A STEP idk how, maybe the server needs to send a packet telling the player to SHAKE SHAKE SHAKE - 1, 2, SHAKE, SHAKE, 1, 2, SHAKE, SHAKE, ABAaah! eeeaaaeeeuuuaaaaiiioooouuuuueeeuuuooo... GOGOOGLEEE ITTT
         // - Fix death screen to have a custom death msg based on what actually killed you (probably the server needs to store entityJSON.playerDeathReason for the client to use (will say the last entity name that hit the player))
-        // - Add debug when pressing I - Show ping and everything
         // - Toggle leaderboard via tab
+        // - Add an animation for rocks dying
+        // - Add a crack line on rocks at 1HP
+        // - Add Q as a toggle version of A
+        // - Add client-side prediction
+        // - Add disconnection when didn't recieve any server package for 10+ seconds
 
         //setup shit
         const peer = new Peer(undefined, {
@@ -169,6 +173,14 @@
             return snapshot.val()
         }
 
+        function setStoredKey(key, value) {
+            localStorage.setItem(key, value)
+        }
+
+        function getStoredKey(key) {
+            return localStorage.getItem(key) || ''
+        }
+
         function sendData(peerID, type, data, data2, data3, data4, data5) {
             const randomID = randomInt(1000000000000000, 9999999999999999)
             const message = {
@@ -185,7 +197,7 @@
         }
 
         async function spawnPlayer() {
-            console.log('Connected to server!')
+            console.log('Spawned player')
             await waitUntil(() => playerID >= 0, 50)
             sendData(serverULID, 'spawnPlayer', playerID)
             menu = 0
@@ -239,8 +251,11 @@
                         
                         if (type === "entityData") {
                             entityJSON = entityData
+                            achievements.AchievementAchieved = entityData.playerAchievementAchieved[playerID]
+                            achievements.AchievementProgress = entityData.playerAchievementProgress[playerID]
                             playerID = serverPackage.ID
                             stats = serverPackage.stats
+                            serverTps = serverPackage.tps
                         } else if (type === 'disconnect') {
                             playerID = -1
                             disconnectReason = serverPackage
@@ -259,6 +274,41 @@
                 disconnectWasFromServer = false
                 disconnectAction = 'Press enter or try a different server.'
             })
+        }
+
+        async function updatePingFromWebRTC() {
+            if (!conn || !conn.peerConnection || menu == 1 || playerID < 0) return
+            
+            try {
+                const stats = await conn.peerConnection.getStats()
+                stats.forEach(report => {
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                        if (report.currentRoundTripTime) {
+                            const newPing = Math.round(report.currentRoundTripTime * 1000)
+                            
+                            pingSamples.push(newPing)
+                            if (pingSamples.length > 20) {
+                                pingSamples.shift()
+                            }
+                            
+                            const weights = []
+                            let totalWeight = 0
+                            let weightedSum = 0
+                            
+                            for (let i = 0; i < pingSamples.length; i++) {
+                                const weight = (i + 1)
+                                weights.push(weight)
+                                totalWeight += weight
+                                weightedSum += pingSamples[i] * weight
+                            }
+                            
+                            ping = Math.round(weightedSum / totalWeight)
+                        }
+                    }
+                })
+            } catch (err) {
+                console.log('Ping update error:', err)
+            }
         }
 
         // Drawing Functions
@@ -498,10 +548,23 @@
         disconnectReason = 'none'
         disconnectWasFromServer = false
         disconnectAction = 'Press enter or try a different server.'
+        storageNamespace = 'cobbled_v2.0.2+'
+        username = ''
+        let ping = 0
+        let pingSamples = []
+        let lastPingUpdate = 0
+        let fps = 0
+        let frameCount = 0
+        let lastFpsTime = 0
+        let mspt = 33.33
+        let lastFrameTime = 0
         resize()
         let running = true
+        let deathCheckCooldown = false
+        let enterWasPressedLastFrame = false
         startClientLoop()
         startMenuLoop()
+        startStorageLoop()
 
         function startClientLoop() {
             setInterval(() => {
@@ -509,6 +572,20 @@
                 // if (playerID >= 0) is used in a lot of places as a way to determine if the player is connected to the server.
                 // a lotta stuff shouldn't even try to render or calculate before they connect.
                 // But some stuff (like menus) should still render before connecting.
+                if (Date.now() - lastPingUpdate > 66) {
+                    updatePingFromWebRTC()
+                    lastPingUpdate = Date.now()
+                }
+
+                let now = Date.now()
+                frameCount++
+                if (now - lastFpsTime >= 1000) {
+                    fps = Math.round((frameCount * 1000) / (now - lastFpsTime))
+                    frameCount = 0
+                    lastFpsTime = now
+                }
+                let frameStart = performance.now()
+
                 if (playerID >= 0) {
                     playerX = entityJSON.playerX[playerID]
                     playerY = entityJSON.playerY[playerID]
@@ -534,10 +611,10 @@
                     if (rightMouseDown || isKeyPressed('Shift')) {playerJSON.mode = -1}
 
                     switch (playerJSON.mode) {
-                        case -1: playerModeSpeedMultiplier = 0.75
-                        case 0: playerModeSpeedMultiplier = 1
-                        case 1: playerModeSpeedMultiplier = 1.5
-                    }
+                        case -1: playerModeSpeedMultiplier = 0.75 ;break
+                        case 0: playerModeSpeedMultiplier = 1 ;break
+                        case 1: playerModeSpeedMultiplier = 1.5 ;break
+                    } // dead code? nah i'll keep it for when i add client-side prediction
 
                     stepReach = 50+(stats.stepReach*5)
                     fov = 360*(1+(stats.fieldOfView/20))
@@ -683,11 +760,18 @@
                     // Entities - no: en titties :P
                     if (entityJSON.rockX) {
                         for (let i=0; i < entityJSON.rockX.length; i++) {
+                            let rockFillColor = '#777777'
+                            let rockOutlineColor = '#606060'
+                            switch (entityJSON.rockType[i]) {
+                                case 0: rockFillColor = '#777777'; rockOutlineColor = '#606060' ;break
+                                case 1: rockFillColor = '#999999'; rockOutlineColor = '#808080' ;break
+                                default: rockFillColor = '#ff00ff'; rockOutlineColor = '#ff00ff' ;break
+                            }
                             if (entityJSON.rockDuplicated[i] == 1) {
-                                drawShape(entityJSON.rockX[i]-cameraX, entityJSON.rockY[i]-cameraY, 7, 7, i, '#777777', '#606060', 2)
-                                drawShape(entityJSON.rockX[i]+(Math.cos(degToRad(entityJSON.rockDirection[i]))*5)-cameraX, entityJSON.rockY[i]+(Math.sin(degToRad(entityJSON.rockDirection[i]))*5)-cameraY, 7, 7, i, '#777777', '#606060', 2)
+                                drawShape(entityJSON.rockX[i]-cameraX, entityJSON.rockY[i]-cameraY, 7, entityJSON.rockSides[i], i, rockFillColor, rockOutlineColor, 2)
+                                drawShape(entityJSON.rockX[i]+(Math.cos(degToRad(entityJSON.rockDirection[i]))*5)-cameraX, entityJSON.rockY[i]+(Math.sin(degToRad(entityJSON.rockDirection[i]))*5)-cameraY, 7, entityJSON.rockSides[i], i, '#777777', '#606060', 2)
                             } else {
-                                drawShape(entityJSON.rockX[i]-cameraX, entityJSON.rockY[i]-cameraY, 7, 7, i, '#777777', '#606060', 2)
+                                drawShape(entityJSON.rockX[i]-cameraX, entityJSON.rockY[i]-cameraY, 7, entityJSON.rockSides[i], i, rockFillColor, rockOutlineColor, 2)
                             }
                         }
                     }
@@ -696,23 +780,25 @@
                         for (let i=0; i < entityJSON.boulderX.length; i++) {
                             if (entityJSON.boulderSpawnCondition[i] == 1) {
                                 switch (entityJSON.boulderRarity[i]) {
-                                    case 0: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#777777', '#606060', 4); break
-                                    case 1: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#f2f2f2', '#cccccc', 4); break
-                                    case 2: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ffbf00', '#d9a300', 4); break
-                                    case 3: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#58f5db', '#49ccb6', 4); break
-                                    case 4: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ff3333', '#d90000', 4); break
+                                    case 0: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, entityJSON.boulderSides[i], i, '#777777', '#606060', 4); break
+                                    case 1: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, entityJSON.boulderSides[i], i, '#f2f2f2', '#cccccc', 4); break
+                                    case 2: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, entityJSON.boulderSides[i], i, '#ffbf00', '#d9a300', 4); break
+                                    case 3: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, entityJSON.boulderSides[i], i, '#58f5db', '#49ccb6', 4); break
+                                    case 4: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, entityJSON.boulderSides[i], i, '#ff3333', '#d90000', 4); break
                                 }
                             } else if (entityJSON.boulderSpawnCondition[i] == 2) {
                                 switch (entityJSON.boulderRarity[i]) {
-                                    case 0: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#777777', '#606060', 8); break
-                                    case 1: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#f2f2f2', '#cccccc', 8); break
-                                    case 2: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ffbf00', '#d9a300', 8); break
-                                    case 3: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#58f5db', '#49ccb6', 8); break
-                                    case 4: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, 7, i, '#ff3333', '#d90000', 8); break
+                                    case 0: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, entityJSON.boulderSides[i], i, '#777777', '#606060', 8); break
+                                    case 1: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, entityJSON.boulderSides[i], i, '#f2f2f2', '#cccccc', 8); break
+                                    case 2: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, entityJSON.boulderSides[i], i, '#ffbf00', '#d9a300', 8); break
+                                    case 3: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, entityJSON.boulderSides[i], i, '#58f5db', '#49ccb6', 8); break
+                                    case 4: drawShape(entityJSON.boulderX[i]-cameraX, entityJSON.boulderY[i]-cameraY, entityJSON.boulderSize[i]/2, entityJSON.boulderSides[i], i, '#ff3333', '#d90000', 8); break
                                 }
                             }
                         }
                     }
+
+                    // while you're studying my code, you might as well join my discord server! go to the ReadMe file to find the link
 
                     if (entityJSON.sanctuaryX) {
                         for (let i=0; i < entityJSON.sanctuaryX.length; i++) {
@@ -1001,7 +1087,24 @@
                         drawText(0, (i+1)*12*(fov/360)-(screenSizeY/2), 10*(fov/360), notifications.color[i], notifications.text[i], 0, 'center')
                     }
                 }
-                
+
+                // Debug HUD
+                if (isKeyPressed('i') || isKeyPressed('I')) {
+                    drawText(-screenSizeX/2+2, -screenSizeY/2+2, 6, '#000000', 
+`=== DEBUG MENU ===
+FPS: ${fps}
+MSPT: ${Math.round(mspt*1000)/1000}
+Server TPS: ${serverTps}
+Ping: ${ping}ms
+Position: ${Math.round(cameraX)}, ${Math.round(cameraY)}
+Direction: ${Math.round(playerDirection[activeFoot]*10)/10}°
+Players: ${entityJSON.playerActive ? entityJSON.playerActive.filter(p => p === 1).length : 0}/${serverJSON.playerLimit}
+Entities: ${entityJSON.rockX ? entityJSON.rockX.length + (entityJSON.boulderX ? entityJSON.boulderX.length : 0) + (entityJSON.sanctuaryX ? entityJSON.sanctuaryX.length : 0) : 0} (R:${entityJSON.rockX ? entityJSON.rockX.length : 0} B:${entityJSON.boulderX ? entityJSON.boulderX.length : 0} S:${entityJSON.sanctuaryX ? entityJSON.sanctuaryX.length : 0})
+Map: ${serverJSON.borderSize*2}x${serverJSON.borderSize*2}
+Foot Height: ${entityJSON.playerHeight && entityJSON.playerHeight[playerID] ? entityJSON.playerHeight[playerID][activeFoot] : 'N/A'}
+Mode: ${playerJSON.mode}`
+, 0, 'left', 'stacked')
+                }
 
                 // Menus
                 if (deathScreen == 1) {
@@ -1038,7 +1141,7 @@
                         drawText(0, 22*(fov/360), 12*(fov/360), '#000000', `${disconnectReason}`, 0, 'center')
                         drawText(0, 32*(fov/360), 8*(fov/360), '#000000', `${disconnectAction}`, 0, 'center', 'stacked')
                     } else if (disconnectWasFromServer == true) {
-                        drawRect(0, 0, screenSizeX*(fov/360), screenSizeY*(fov/360), 0, '#62000080', 0, 0)
+                        drawRect(0, 0, screenSizeX*(fov/360), screenSizeY*(fov/360), 0, '#620000c0', 0, 0)
                         drawText(0, -22*(fov/360), 12*(fov/360), '#000000', `Disconnected!`, 0, 'center')
                         drawText(0, 22*(fov/360), 8*(fov/360), '#000000', `${disconnectReason}`, 0, 'center')
                     }
@@ -1049,6 +1152,8 @@
                 }
 
                 ctx.restore()
+
+                mspt = performance.now() - frameStart
 
                 if (playerID >= 0) {
                     playerPackage = {
@@ -1064,10 +1169,6 @@
                 
             }, 33.33)
         }
-    
-        
-        let deathCheckCooldown = false
-        let enterWasPressedLastFrame = false
 
         async function startMenuLoop() {
             setInterval(async () => {
@@ -1107,6 +1208,35 @@
                     deathScreen = 0
                 }
             }, 33.33)
+        }
+
+        function startStorageLoop() {
+            if (getStoredKey('achievements') == '') {
+                setStoredKey('username', username)
+                setStoredKey('achievements', JSON.stringify(achievements))
+                console.log('hi, new person')
+            } else {
+                username = getStoredKey('username')
+                if (username == 'unnamed') username = ''
+                document.getElementById('usernameInput').value = username
+                achievements = JSON.parse(getStoredKey('achievements'))
+                console.log('hi, frequent player')
+                if (achievements.AchievementAchieved.length != 55) {
+                    if (achievements.AchievementAchieved.length < 55) {
+                        for (let i=achievements.AchievementAchieved.length; i < 55; i++) {
+                            achievements.AchievementAchieved.push(0)
+                            achievements.AchievementProgress.push(0)
+                        }
+                    } else {
+                        console.error('EVERYONE SCREEAAMMMM, HOW ARE THERE REMOVED ACHIEVEMENTS????//')
+                        console.log(JSON.stringify(achievements))
+                    }
+                }
+            }
+            setInterval(() => {
+                setStoredKey('username', username)
+                setStoredKey('achievements', JSON.stringify(achievements))
+            }, 1000)
         }
 
 
