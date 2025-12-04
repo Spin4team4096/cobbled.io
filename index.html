@@ -29,7 +29,6 @@
         // - Add server selector (top)
         // - Add "report an issue" button (under "press enter")
         // - Add Discord button (bottom left)
-        // - Add achievements carousel (right half)
         // - Add settings button (top left) - UI scale setting only (for now)
         // - Play button?
         // - Question button, which guides the player how to play the game
@@ -41,6 +40,8 @@
         // - Add Q as a toggle version of A
         // - Add client-side prediction
         // - Add disconnection when didn't recieve any server package for 10+ seconds
+        // - rn the canvas is 360p points. to make positions more accurate, make default fov = 1080, and adjust scaling of everything
+        // - lower brightness of white achievements maybe?
 
         //setup shit
         const peer = new Peer(undefined, {
@@ -101,6 +102,20 @@
             }
         })
         canvas.addEventListener('contextmenu', e => {e.preventDefault()})
+
+        let scrollTimeout
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault()
+            isScrollingUp = (e.deltaY < 0)
+            isScrollingDown = (e.deltaY > 0)
+
+            clearTimeout(scrollTimeout)
+            scrollTimeout = setTimeout(() => {
+                isScrollingUp = false
+                isScrollingDown = false
+            }, 33.33)
+        })
         
         const keys = {}
         addEventListener('keydown', e => {
@@ -117,6 +132,10 @@
 
         function isKeyPressed(key) {
             return keys[key] === true
+        }
+
+        function toHex(num) {
+            return Math.round(num*255).toString(16).padStart(2, "0")
         }
 
         function degToRad(degrees) {
@@ -140,6 +159,14 @@
             const currentDate = new Date()
             const diffTime = currentDate - startDate
             return Math.floor(diffTime / (1000 * 60 * 60 * 24))
+        }
+
+        function getDate() {
+            let d = new Date()
+            let day = d.getDate().toString().padStart(2, '0')
+            let month = (d.getMonth() + 1).toString().padStart(2, '0')
+            let year = d.getFullYear().toString()
+            return `${day}/${month}/${year}`
         }
 
         function randomInt(num1, num2) {return Math.floor(Math.random() * (Math.max(num1, num2) - Math.min(num1, num2) + 1)) + Math.min(num1, num2)}
@@ -251,8 +278,51 @@
                         
                         if (type === "entityData") {
                             entityJSON = entityData
-                            achievements.AchievementAchieved = entityData.playerAchievementAchieved[playerID]
-                            achievements.AchievementProgress = entityData.playerAchievementProgress[playerID]
+                            if (achievements && entityData.playerAchievementProgress && entityData.playerAchievementAchieved) {
+                                const serverProgress = entityData.playerAchievementProgress[playerID] || []
+                                const serverAchieved = entityData.playerAchievementAchieved[playerID] || []
+                                const clientProgress = achievements.AchievementProgress || []
+                                const clientAchieved = achievements.AchievementAchieved || []
+                                
+                                let allProgressGreaterOrEqual = true
+                                let atLeastOneProgressGreater = false
+                                let allAchievedGreaterOrEqual = true
+                                let atLeastOneAchievedGreater = false
+                                
+                                const maxLength = Math.max(serverProgress.length, clientProgress.length)
+                                for (let i = 0; i < maxLength; i++) {
+                                    const serverVal = serverProgress[i] || 0
+                                    const clientVal = clientProgress[i] || 0
+                                    
+                                    if (serverVal < clientVal) {
+                                        allProgressGreaterOrEqual = false
+                                        break
+                                    }
+                                    if (serverVal > clientVal) {
+                                        atLeastOneProgressGreater = true
+                                    }
+                                }
+                                
+                                for (let i = 0; i < Math.max(serverAchieved.length, clientAchieved.length); i++) {
+                                    const serverVal = serverAchieved[i] || 0
+                                    const clientVal = clientAchieved[i] || 0
+                                    
+                                    if (serverVal < clientVal) {
+                                        allAchievedGreaterOrEqual = false
+                                        break
+                                    }
+                                    if (serverVal > clientVal) {
+                                        atLeastOneAchievedGreater = true
+                                    }
+                                }
+
+                                const shouldUpdateProgress = allProgressGreaterOrEqual && atLeastOneProgressGreater
+                                const shouldUpdateAchieved = allAchievedGreaterOrEqual && atLeastOneAchievedGreater
+                                if (shouldUpdateProgress || shouldUpdateAchieved) {
+                                    achievements.AchievementAchieved = [...serverAchieved]
+                                    achievements.AchievementProgress = [...serverProgress]
+                                }
+                            }
                             playerID = serverPackage.ID
                             stats = serverPackage.stats
                             serverTps = serverPackage.tps
@@ -310,6 +380,57 @@
                 console.log('Ping update error:', err)
             }
         }
+
+        function colorsToHex(color) {
+            switch (color) {
+                case 'red': return '#ff6666'
+                case 'orange': return '#ff9966'
+                case 'yellow': return '#ffc266'
+                case 'lime': return '#87e65c'
+                case 'green': return '#71bf4d'
+                case 'blue': return '#6696ff'
+                case 'purple': return '#9966ff'
+                case 'pink': return '#fc66ff'
+                case 'white': return '#f2f2f2'
+                case 'special': {
+                    t = Date.now()/640
+                    start = [255,102,102]
+                    end = [255,128,166]
+                    factor = 0.5 + 0.5 * Math.sin(t)
+                    r = Math.round(start[0] + (end[0]-start[0])*factor)
+                    g = Math.round(start[1] + (end[1]-start[1])*factor)
+                    b = Math.round(start[2] + (end[2]-start[2])*factor)
+                    return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`
+                }
+                default: return '#ff00ff'
+            }
+        }
+
+        function colorsToOutlineHex(color) {
+            switch (color) {
+                case 'red': return '#bf4d4d'
+                case 'orange': return '#bf734d'
+                case 'yellow': return '#bf914d'
+                case 'lime': return '#62a642'
+                case 'green': return '#4b8033'
+                case 'blue': return '#4d71bf'
+                case 'purple': return '#734dbf'
+                case 'pink': return '#bd4dbf'
+                case 'white': return '#bfbfbf'
+                case 'special': {
+                    t = Date.now()/640
+                    start = [191,77,77]
+                    end = [191,77,191]
+                    factor = 0.5 + 0.5 * Math.sin(t)
+                    r = Math.round(start[0] + (end[0]-start[0])*factor)
+                    g = Math.round(start[1] + (end[1]-start[1])*factor)
+                    b = Math.round(start[2] + (end[2]-start[2])*factor)
+                    return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`
+                }
+                default: return '#ff0000'
+            }
+        }
+
 
         // Drawing Functions
 
@@ -444,25 +565,51 @@
             ctx.restore()
         }
 
-        function drawSquircle(x, y, width, height, rotation = 0, fillColor = '', strokeColor = '', lineWidth = 0, cornerRadius = 10) {
+        function drawSquircle(x, y, width, height, rotation = 0, fillColor = '', strokeColor = '', lineWidth = 0, cornerRadius = 10, roundedCorners = [1,1,1,1]) {
             ctx.save()
             ctx.translate(x, y)
             ctx.rotate(degToRad(rotation))
-            const halfWidth = width / 2
-            const halfHeight = height / 2
-            
+            const halfWidth = width/2
+            const halfHeight = height/2
+
             ctx.beginPath()
-            ctx.moveTo(-halfWidth + cornerRadius, -halfHeight)
-            ctx.lineTo(halfWidth - cornerRadius, -halfHeight)
-            ctx.quadraticCurveTo(halfWidth, -halfHeight, halfWidth, -halfHeight + cornerRadius)
-            ctx.lineTo(halfWidth, halfHeight - cornerRadius)
-            ctx.quadraticCurveTo(halfWidth, halfHeight, halfWidth - cornerRadius, halfHeight)
-            ctx.lineTo(-halfWidth + cornerRadius, halfHeight)
-            ctx.quadraticCurveTo(-halfWidth, halfHeight, -halfWidth, halfHeight - cornerRadius)
-            ctx.lineTo(-halfWidth, -halfHeight + cornerRadius)
-            ctx.quadraticCurveTo(-halfWidth, -halfHeight, -halfWidth + cornerRadius, -halfHeight)
+
+            if (roundedCorners[0]) {
+                ctx.moveTo(-halfWidth+cornerRadius, -halfHeight)
+            } else {
+                ctx.moveTo(-halfWidth, -halfHeight)
+            }
+
+            if (roundedCorners[1]) {
+                ctx.lineTo(halfWidth-cornerRadius, -halfHeight)
+                ctx.quadraticCurveTo(halfWidth, -halfHeight, halfWidth, -halfHeight+cornerRadius)
+            } else {
+                ctx.lineTo(halfWidth, -halfHeight)
+            }
+
+            if (roundedCorners[2]) {
+                ctx.lineTo(halfWidth, halfHeight-cornerRadius)
+                ctx.quadraticCurveTo(halfWidth, halfHeight, halfWidth-cornerRadius, halfHeight)
+            } else {
+                ctx.lineTo(halfWidth, halfHeight)
+            }
+
+            if (roundedCorners[3]) {
+                ctx.lineTo(-halfWidth+cornerRadius, halfHeight)
+                ctx.quadraticCurveTo(-halfWidth, halfHeight, -halfWidth, halfHeight-cornerRadius)
+            } else {
+                ctx.lineTo(-halfWidth, halfHeight)
+            }
+
+            if (roundedCorners[0]) {
+                ctx.lineTo(-halfWidth, -halfHeight+cornerRadius)
+                ctx.quadraticCurveTo(-halfWidth, -halfHeight, -halfWidth+cornerRadius, -halfHeight)
+            } else {
+                ctx.lineTo(-halfWidth, -halfHeight)
+            }
+
             ctx.closePath()
-            
+
             if (fillColor) {
                 ctx.fillStyle = fillColor
                 ctx.fill()
@@ -472,7 +619,7 @@
                 ctx.lineWidth = lineWidth
                 ctx.stroke()
             }
-            
+
             ctx.restore()
         }
 
@@ -525,6 +672,175 @@
         reversedStatNames = ['fieldOfView','stepReach','stepSpeed','duplication','kickDamage','kickAccuracy','kickSpeed','maxHealth','activeRegen','passiveRegen']
         reversedStatDisplayText = ['Field of View [0]','Step Reach [9]','Step Speed [8]','Duplication [7]','Kick Damage [6]','Kick Accuracy [5]','Kick Speed [4]','Max Health [3]','Active Regen [2]','Passive Regen [1]']
         reversedStatColors = ['#9966ff', '#ff9966', '#6696ff', '#ffc266', '#ff6666', '#87e65c', '#6696ff', '#9966ff', '#ff6666', '#fc66ff']
+        achievementName = [
+            "Balanced Fighter",
+            "Steady Recovery",
+            "Active Healer",
+            "Indestructible",
+            "Snipe!",
+            "Pinpoint Precision",
+            "More dangerous than it looks...",
+            "Double Trouble",
+            "2 fast 4 u",
+            "No more unreachable rocks!",
+            "Eagle Eye",
+            "A good start",
+            "That took a while...",
+            "Farming...",
+            "These Boulders gotta go",
+            "Destroy EVERYTHING",
+            "It was a good run",
+            "I can dodge all day",
+            "Revenge",
+            "Jackpot!",
+            "A moment to cherish forever",
+            "Getting the hang of it",
+            "Starting to get good",
+            "I'm on a \"See-food\" Diet",
+            "Starting out",
+            "Getting there...",
+            "Maxed out!",
+            "You aren't bad at this",
+            "On the leaderboard?",
+            "Pretty good!",
+            "Mid-air collision",
+            "Back to sender",
+            "That was tough",
+            "Boss Hunter",
+            "Rock Barrage",
+            "Swirling and swirling and",
+            "Only the essentials",
+            "How'd you survive??",
+            "Impossible.",
+            "Flawless",
+            "Never missed, never will.",
+            "Last one standing...",
+            "Not so common",
+            "Pretty rare!",
+            "Shiny!",
+            "Once in a lifetime...",
+            "Optimal Upgrader",
+            "Eager Seeker",
+            "Hello my name is...",
+            "Anniversary Spirit",
+            "Yum!",
+            "Back for more?",
+            "Dedicated",
+            "You gotta learn somehow...",
+        ]
+        achievementDescription = [
+            "Put at least 3 points into every single stat",
+            "Max out Passive Regen",
+            "Max out Active Regen",
+            "Max out Max Health",
+            "Max out Kick Speed",
+            "Max out Kick Accuracy",
+            "Max out Kick Damage",
+            "Max out Duplication",
+            "Max out Step Speed",
+            "Max out Step Reach",
+            "Max out FOV",
+            "Kill your first Boulder",
+            "Kill your first Mega Boulder",
+            "Kill 100 Boulders",
+            "Kill 1,000 Boulders",
+            "Kill 10,000 things",
+            "Die at level 60",
+            "Kill a player while dodging all their shots",
+            "Kill the last player who killed you",
+            "Kill a level 50+ player for tons of XP",
+            "Get your first kill!",
+            "Kill 10 players",
+            "Kill 100 players",
+            "Kill 1,000 players",
+            "Get to level 20",
+            "Get to level 40",
+            "Get to level 60",
+            "Reach 100k points",
+            "Reach 500k points",
+            "Reach 1m points",
+            "Rock game mechanic not added yet",
+            "Kick a rock back to whoever kicked it (and missed)",
+            "Kill a boss",
+            "Kill 10 bosses",
+            "Kill the Boulder Boss",
+            "Kill the Rock Storm",
+            "Get to level 60 with only up to 3 diff stats upgraded",
+            "Get to level 60 without ever upgrading Step Reach",
+            "Get to level 60 without upgrading a single stat",
+            "Get to level 60 without dying once",
+            "Get to level 60 without ever missing a rock",
+            "Be the last one alive when the server closes",
+            "Kill an Iron Boulder",
+            "Kill a Golden Boulder",
+            "Kill a Diamond Boulder",
+            "Find a Crimson Boulder",
+            "Upgrade dmg & dup in the most optimal order",
+            "Find an easter egg!",
+            "Type a username",
+            "Play on the game's anniversary date (23 Jan)",
+            "Load your saved achievements using cookies",
+            "Play for 7 total days",
+            "Play for 30 total days",
+            "Die from forgetting to step on a rock",
+        ]
+        achievementColor = [
+            'orange',
+            'pink',
+            'red',
+            'purple',
+            'blue',
+            'lime',
+            'red',
+            'yellow',
+            'blue',
+            'orange',
+            'purple',
+            'lime',
+            'green',
+            'yellow',
+            'orange',
+            'red',
+            'blue',
+            'orange',
+            'purple',
+            'yellow',
+            'orange',
+            'red',
+            'pink',
+            'purple',
+            'blue',
+            'purple',
+            'red',
+            'green',
+            'lime',
+            'yellow',
+            'pink',
+            'purple',
+            'red',
+            'orange',
+            'yellow',
+            'blue',
+            'purple',
+            'orange',
+            'yellow',
+            'lime',
+            'purple',
+            'pink',
+            'white',
+            'yellow',
+            'blue',
+            'red',
+            'orange',
+            'green',
+            'white',
+            'special',
+            'yellow',
+            'lime',
+            'green',
+            'purple'
+        ]
+        let achievementComingSoon = [17,18,19,20,21,22,23,30,31,32,33,34,35,36,37,38,39,40,46,54]
         playerX = 0
         playerY = 0
         playerHP = 0
@@ -558,6 +874,10 @@
         let lastFpsTime = 0
         let mspt = 33.33
         let lastFrameTime = 0
+        carouselPosition = 1000000011840
+        lastCarouselScrollTime = 30
+        let isScrollingUp = false
+        let isScrollingDown = false
         resize()
         let running = true
         let deathCheckCooldown = false
@@ -1046,40 +1366,40 @@
                     }
 
                     let leaderboard = []
-                        if (showLeaderboard) {
-                            for (let i = 0; i < entityJSON.playerX.length; i++) {
-                                if (entityJSON.playerActive[i] && entityJSON.playerXP[i] > 0 && entityJSON.playerHP[i] > 0) {
-                                    leaderboard.push({
-                                        name: entityJSON.playerUsername[i] || 'unnamed',
-                                        xp: entityJSON.playerXP[i],
-                                        id: i
-                                    })
-                                }
-                            }
-                            
-                            leaderboard.sort((a, b) => b.xp - a.xp)
-                            leaderboard = leaderboard.slice(0, 10)
-                            
-                            let barX = (96*(fov/360))
-                            let barY = 10*(fov/360)
-                            let fillX = 94*(fov/360)
-                            let fillY = 8*(fov/360)
-                            let barPositionX = screenSizeX/2 - barX - (2*(fov/360))
-                            let barPositionY = -screenSizeY/2 + barY + (2*(fov/360))
-                            let maxXP = leaderboard.length > 0 ? leaderboard[0].xp : 1
-                            drawSquircle(barPositionX + barX/2, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 2*(fov/360))
-                            drawText(barPositionX + barX/2, barPositionY, 8*(fov/360), '#ffffff', 'LEADERBOARD', 0, 'center')
-                            
-                            for (let i = 0; i < leaderboard.length; i++) {
-                                let player = leaderboard[i]
-                                barPositionY = barPositionY + ((i+1) * 12*(fov/360))
-                                let percent = clamp(player.xp / maxXP, 0.02, 1)
-                                drawSquircle(barPositionX + barX/2, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 2*(fov/360))
-                                drawSquircle(barPositionX + barX/2 - (fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff5d0d', '#000000', 0, 1*(fov/360))
-                                drawText(barPositionX + 5, barPositionY, 6*(fov/360), '#ffffff', `${i+1}. ${player.name}`, 0, 'left')
-                                drawText(barPositionX + barX - 5, barPositionY, 6*(fov/360), '#ffffff', `${player.xp} XP`, 0, 'right')
+                    if (showLeaderboard) {
+                        for (let i = 0; i < entityJSON.playerX.length; i++) {
+                            if (entityJSON.playerActive[i] && entityJSON.playerXP[i] > 0 && entityJSON.playerHP[i] > 0) {
+                                leaderboard.push({
+                                    name: entityJSON.playerUsername[i] || 'unnamed',
+                                    xp: entityJSON.playerXP[i],
+                                    id: i
+                                })
                             }
                         }
+                        
+                        leaderboard.sort((a, b) => b.xp - a.xp)
+                        leaderboard = leaderboard.slice(0, 10)
+                        
+                        let barX = (96*(fov/360))
+                        let barY = 10*(fov/360)
+                        let fillX = 94*(fov/360)
+                        let fillY = 8*(fov/360)
+                        let barPositionX = screenSizeX/2 - barX - (2*(fov/360))
+                        let barPositionY = -screenSizeY/2 + barY + (2*(fov/360))
+                        let maxXP = leaderboard.length > 0 ? leaderboard[0].xp : 1
+                        drawSquircle(barPositionX + barX/2, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 2*(fov/360))
+                        drawText(barPositionX + barX/2, barPositionY, 8*(fov/360), '#ffffff', 'LEADERBOARD', 0, 'center')
+                        
+                        for (let i = 0; i < leaderboard.length; i++) {
+                            let player = leaderboard[i]
+                            barPositionY = -screenSizeY/2+barY+(2*(fov/360))+((i+1)*12*(fov/360))
+                            let percent = clamp(player.xp / maxXP, 0.02, 1)
+                            drawSquircle(barPositionX + barX/2, barPositionY, barX, barY, 0, '#000000', '#ff00ff', 0, 2*(fov/360))
+                            drawSquircle(barPositionX + barX/2 - (fillX/2)*(1-percent), barPositionY, fillX*percent, fillY, 0, '#ff5d0d', '#000000', 0, 1*(fov/360))
+                            drawText(barPositionX + 5, barPositionY, 6*(fov/360), '#ffffff', `${i+1}. ${player.name}`, 0, 'left')
+                            drawText(barPositionX + barX - 5, barPositionY, 6*(fov/360), '#ffffff', `${player.xp} XP`, 0, 'right')
+                        }
+                    }
 
 
                     for (let i=0; i < notifications.text.length; i++) {
@@ -1152,6 +1472,53 @@ Mode: ${playerJSON.mode}`
                     document.getElementById('usernameInput').style.display = 'none'
                 }
 
+                // Achievements Carousel
+                if (menu == 1) {
+                    for (let i=0; i < achievementName.length; i++) {
+                        if (!achievements.AchievementAchieved) continue
+                        achievementScale = 0.75
+                        barX = 180*(fov/360)*achievementScale
+                        barY = 32*(fov/360)*achievementScale
+                        barPositionX = screenSizeX/2-(barX/2)-(5*(fov/360)*achievementScale)
+                        barPositionY = ((carouselPosition+(i*barY*1.1))%(achievementName.length*barY*1.1))-screenSizeY/2-(barY/2)
+                        fillX = 176*(fov/360)*achievementScale
+                        fillY = 28*(fov/360)*achievementScale
+                        if (achievements.AchievementAchieved[i] == 0) {
+                            fillColor = '#cccccc'
+                            outlineColor = '#8c8c8c'
+                        } else {
+                            fillColor = colorsToHex(achievementColor[i])
+                            outlineColor = colorsToOutlineHex(achievementColor[i])
+                        }
+                        opacity = toHex(clamp(1-(((Math.abs(barPositionY)-(screenSizeY/4))/(screenSizeY/4.5))*0.8),0,1))
+                        drawSquircle(barPositionX, barPositionY, barX, barY, 0, `${outlineColor}${opacity}`, '#ff00ff', 0, (barY/2), [1,0,0,1])
+                        drawSquircle(barPositionX, barPositionY, fillX, fillY, 0, `${fillColor}${opacity}`, '#ff00ff', 0, (barY/2)*(fillY/barY), [1,0,0,1])
+                        if (achievementComingSoon.includes(i)) {
+                            drawText(barPositionX-(barX/2.3), barPositionY-(barY/6), 12*(fov/360)*achievementScale, `#000000${opacity}`, `COMING SOON`, 0, 'left')
+                            drawText(barPositionX-(barX/2.3), barPositionY+(barY/4), 7.3*(fov/360)*achievementScale, `#000000${opacity}`, `COMING SOON`, 0, 'left')
+                        } else {
+                            drawText(barPositionX-(barX/2.3), barPositionY-(barY/6), 12*(fov/360)*achievementScale, `#000000${opacity}`, `${achievementName[i]}`, 0, 'left')
+                            switch(i) {
+                                case 13: drawText(barPositionX-(barX/2.3), barPositionY+(barY/4), 7.3*(fov/360)*achievementScale, `#000000${opacity}`, `${achievementDescription[i]} (${(clamp(achievements.AchievementProgress[i]/100,0,1))*100}%)`, 0, 'left') ;break
+                                case 14: drawText(barPositionX-(barX/2.3), barPositionY+(barY/4), 7.3*(fov/360)*achievementScale, `#000000${opacity}`, `${achievementDescription[i]} (${(clamp(achievements.AchievementProgress[i]/1000,0,1))*100}%)`, 0, 'left') ;break
+                                case 15: drawText(barPositionX-(barX/2.3), barPositionY+(barY/4), 7.3*(fov/360)*achievementScale, `#000000${opacity}`, `${achievementDescription[i]} (${(clamp(achievements.AchievementProgress[i]/10000,0,1))*100}%)`, 0, 'left') ;break
+                                case 16: drawText(barPositionX-(barX/2.3), barPositionY+(barY/4), 7.3*(fov/360)*achievementScale, `#000000${opacity}`, `${achievementDescription[i]} (${Math.round(((clamp(getStoredKey('topLevel')/60,0,1))*100)*100)/100}%)`, 0, 'left') ;break
+                                case 24: drawText(barPositionX-(barX/2.3), barPositionY+(barY/4), 7.3*(fov/360)*achievementScale, `#000000${opacity}`, `${achievementDescription[i]} (${Math.round(((clamp(getStoredKey('topLevel')/20,0,1))*100)*100)/100}%)`, 0, 'left') ;break
+                                case 25: drawText(barPositionX-(barX/2.3), barPositionY+(barY/4), 7.3*(fov/360)*achievementScale, `#000000${opacity}`, `${achievementDescription[i]} (${Math.round(((clamp(getStoredKey('topLevel')/40,0,1))*100)*100)/100}%)`, 0, 'left') ;break
+                                case 26: drawText(barPositionX-(barX/2.3), barPositionY+(barY/4), 7.3*(fov/360)*achievementScale, `#000000${opacity}`, `${achievementDescription[i]} (${Math.round(((clamp(getStoredKey('topLevel')/60,0,1))*100)*100)/100}%)`, 0, 'left') ;break
+                                case 27: drawText(barPositionX-(barX/2.3), barPositionY+(barY/4), 7.3*(fov/360)*achievementScale, `#000000${opacity}`, `${achievementDescription[i]} (${Math.round(((clamp(getStoredKey('topXP')/100000,0,1))*100)*100)/100}%)`, 0, 'left') ;break
+                                case 28: drawText(barPositionX-(barX/2.3), barPositionY+(barY/4), 7.3*(fov/360)*achievementScale, `#000000${opacity}`, `${achievementDescription[i]} (${Math.round(((clamp(getStoredKey('topXP')/500000,0,1))*100)*100)/100}%)`, 0, 'left') ;break
+                                case 29: drawText(barPositionX-(barX/2.3), barPositionY+(barY/4), 7.3*(fov/360)*achievementScale, `#000000${opacity}`, `${achievementDescription[i]} (${Math.round(((clamp(getStoredKey('topXP')/1000000,0,1))*100)*100)/100}%)`, 0, 'left') ;break
+                                case 51: drawText(barPositionX-(barX/2.3), barPositionY+(barY/4), 7.3*(fov/360)*achievementScale, `#000000${opacity}`, `${achievementDescription[i]} (${Math.round(((clamp(achievements.AchievementProgress[i]/7,0,1))*100)*100)/100}%)`, 0, 'left') ;break
+                                case 52: drawText(barPositionX-(barX/2.3), barPositionY+(barY/4), 7.3*(fov/360)*achievementScale, `#000000${opacity}`, `${achievementDescription[i]} (${Math.round(((clamp(achievements.AchievementProgress[i]/30,0,1))*100)*100)/100}%)`, 0, 'left') ;break
+                                default: drawText(barPositionX-(barX/2.3), barPositionY+(barY/4), 7.3*(fov/360)*achievementScale, `#000000${opacity}`, `${achievementDescription[i]}`, 0, 'left') ;break
+                            }
+                        }
+                    }
+                }
+
+
+
                 ctx.restore()
 
                 mspt = performance.now() - frameStart
@@ -1208,12 +1575,33 @@ Mode: ${playerJSON.mode}`
                 if (menu == 1) {
                     deathScreen = 0
                 }
+                if (lastCarouselScrollTime > 15) {
+                    if (lastCarouselScrollTime > 30) {
+                        carouselPosition -= 0.4
+                    } else {
+                        carouselPosition -= (lastCarouselScrollTime-15)*0.026
+                    }
+                }
+                lastCarouselScrollTime += 1
+                if (isScrollingDown) {
+                    carouselPosition -= 15
+                    lastCarouselScrollTime = 0
+                }
+                if (isScrollingUp) {
+                    carouselPosition += 15
+                    lastCarouselScrollTime = 0
+                }
             }, 33.33)
         }
 
+        let achievementsSynced = false
         function startStorageLoop() {
             if (getStoredKey('achievements') == '') {
                 setStoredKey('username', username)
+                for (let i=achievements.AchievementAchieved.length; i < 55; i++) {
+                    achievements.AchievementAchieved.push(0)
+                    achievements.AchievementProgress.push(0)
+                }
                 setStoredKey('achievements', JSON.stringify(achievements))
                 console.log('hi, new person')
             } else {
@@ -1221,22 +1609,69 @@ Mode: ${playerJSON.mode}`
                 if (username == 'unnamed') username = ''
                 document.getElementById('usernameInput').value = username
                 achievements = JSON.parse(getStoredKey('achievements'))
-                console.log('hi, frequent player')
+                console.log(`hi, frequent player: ${JSON.stringify(achievements)}`)
+                achievements.AchievementAchieved[50] = 1
+
                 if (achievements.AchievementAchieved.length != 55) {
                     if (achievements.AchievementAchieved.length < 55) {
                         for (let i=achievements.AchievementAchieved.length; i < 55; i++) {
                             achievements.AchievementAchieved.push(0)
                             achievements.AchievementProgress.push(0)
                         }
+                        console.log('had to push values for new achievements')
                     } else {
                         console.error('EVERYONE SCREEAAMMMM, HOW ARE THERE REMOVED ACHIEVEMENTS????//')
                         console.log(JSON.stringify(achievements))
                     }
                 }
             }
+
+            if (getDate() != getStoredKey('lastPlayedDate')) {
+                achievements.AchievementProgress[51] += 1
+                achievements.AchievementProgress[52] += 1
+                if (achievements.AchievementProgress[51] >= 7) {achievements.AchievementAchieved[51] = 1}
+                if (achievements.AchievementProgress[52] >= 30) {achievements.AchievementAchieved[52] = 1}
+            }
+            setStoredKey('lastPlayedDate', getDate())
+            if (getDate().startsWith('23/01')) {achievements.AchievementAchieved[49] = 1}
+
+            const syncInterval = setInterval(() => {
+                if (playerID >= 0 && !achievementsSynced) {
+                    playerPackage = {
+                        achievements: achievements
+                    }
+                    sendData(serverULID, 'achievementSync', playerID, playerPackage)
+
+                    if (entityJSON.playerAchievementAchieved && entityJSON.playerAchievementProgress) {
+                        const serverAchieved = entityJSON.playerAchievementAchieved[playerID] || []
+                        const serverProgress = entityJSON.playerAchievementProgress[playerID] || []
+                        
+                        let arraysMatch = true
+                        if (serverAchieved.length === achievements.AchievementAchieved.length && 
+                            serverProgress.length === achievements.AchievementProgress.length) {
+                            for (let i = 0; i < serverAchieved.length; i++) {
+                                if (serverAchieved[i] !== achievements.AchievementAchieved[i] ||
+                                    serverProgress[i] !== achievements.AchievementProgress[i]) {
+                                    arraysMatch = false
+                                    break
+                                }
+                            }
+                            
+                            if (arraysMatch) {
+                                achievementsSynced = true
+                                clearInterval(syncInterval)
+                                console.log('Achievements synced')
+                            }
+                        }
+                    }
+                }
+            }, 33.33)
+
             setInterval(() => {
                 setStoredKey('username', username)
                 setStoredKey('achievements', JSON.stringify(achievements))
+                if (playerJSON.level > getStoredKey('topLevel')) {setStoredKey('topLevel', playerJSON.level)}
+                if (playerID >= 0) {if (entityJSON.playerXP[playerID] > getStoredKey('topXP')) {setStoredKey('topXP', entityJSON.playerXP[playerID])}}
             }, 1000)
         }
 
